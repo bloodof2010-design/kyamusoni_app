@@ -28,21 +28,15 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Manually install Gradle 8.12.1 + Build APK
+      - name: Build APK
         run: |
           cd android
-          mkdir -p ~/.gradle/wrapper/dists/
-          wget -q https://services.gradle.org/distributions/gradle-8.12.1-all.zip
-          unzip -q gradle-8.12.1-all.zip -d ~/.gradle/wrapper/dists/
-          rm gradle-8.12.1-all.zip
-          ~/.gradle/wrapper/dists/gradle-8.12.1/bin/gradle :app:assembleRelease --stacktrace --warning-mode all 2>&1 | tee build.log || true
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --stacktrace --warning-mode all
           cd ..
-          echo "==== ERROR SUMMARY ===="
-          grep -A 50 "What went wrong" build.log || grep -A 50 "FAILED" build.log || tail -n 100 build.log
-          cp build/app/outputs/flutter-apk/app-release.apk .
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
