@@ -1,1 +1,1 @@
-# kyamusoni-app
+# kyamusoni_app
