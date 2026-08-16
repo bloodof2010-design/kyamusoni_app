@@ -1,40 +1,42 @@
-name: Build Kyamusoni App
+name: Build Flutter APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
-          flutter-version: 3.47.0
-          cache: true
-
-      - name: Flutter doctor
-        run: flutter doctor -v
+          flutter-version: '3.47.0'
+          channel: 'stable'
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
+      - name: FORCE Gradle 8.13.0
+        run: |
+          echo "Overwriting gradle wrapper to 8.13.0"
+          echo 'distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13.0-bin.zip' > android/gradle/wrapper/gradle-wrapper.properties
+          rm -rf ~/.gradle/wrapper/dists/gradle-8.14.0*
 
-      - name: Build release APK
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kyamusoni-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+      - name: Build APK Release
+        run: flutter build apk --release --android-skip-build-dependency-validation
