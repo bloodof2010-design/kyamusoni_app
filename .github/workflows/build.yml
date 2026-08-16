@@ -22,3 +22,15 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk .
       - uses: actions/upload-artifact@v4
         with: {name: app-release, path: app-release.apk}
+- name: Manually install Gradle 8.12.1 + Build APK
+  run: |
+    cd android
+    mkdir -p ~/.gradle/wrapper/dists/
+    wget https://services.gradle.org/distributions/gradle-8.12.1-all.zip
+    unzip gradle-8.12.1-all.zip -d ~/.gradle/wrapper/dists/
+    rm gradle-8.12.1-all.zip
+    
+    ~/.gradle/wrapper/dists/gradle-8.12.1/bin/gradle :app:assembleRelease --stacktrace
+    
+    cd ..
+    cp build/app/outputs/flutter-apk/app-release.apk .
