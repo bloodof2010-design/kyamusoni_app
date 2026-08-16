@@ -12,3 +12,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "kyamusoni_app"
+include ':app'
