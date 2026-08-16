@@ -4,24 +4,24 @@ plugins {
 }
 
 android {
-    namespace = "com.example.kyamusoni_app"
-    compileSdk = flutter.compileSdkVersion
+    namespace "com.example.kyamusoni_app"  // <- fixed: no = sign
+    compileSdk 35                          // <- fixed: hardcode 35
 
     defaultConfig {
-        applicationId = "com.example.kyamusoni_app"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        applicationId "com.example.kyamusoni_app"
+        minSdk 21
+        targetSdk 35
+        versionCode flutter.versionCode
+        versionName flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig signingConfigs.debug
         }
     }
 }
 
 flutter {
-    source = "../.."
+    source "../.."
 }
