@@ -9,21 +9,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.0'
           channel: 'stable'
+
       - run: flutter pub get
-      - name: FORCE Gradle 8.13.0-all
+
+      - name: Manually install Gradle 8.13.0
         run: |
-          echo 'distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13.0-all.zip' > android/gradle/wrapper/gradle-wrapper.properties
-          rm -rf ~/.gradle/wrapper/dists/gradle-8.*
-      - run: flutter build apk --release --android-skip-build-dependency-validation
+          cd android
+          wget https://services.gradle.org/distributions/gradle-8.13.0-all.zip
+          unzip gradle-8.13.0-all.zip -d ~/.gradle/wrapper/dists/
+          rm gradle-8.13.0-all.zip
+          echo "org.gradle.jvmargs=-Xmx2G" > gradle.properties
+
+      - name: Build APK with manual Gradle
+        run: |
+          cd android
+          ~/.gradle/wrapper/dists/gradle-8.13.0/bin/gradle assembleRelease
+          cd ..
+          cp build/app/outputs/flutter-apk/app-release.apk .
