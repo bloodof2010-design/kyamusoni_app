@@ -1,5 +1,4 @@
 name: Build Flutter APK
-
 on:
   push:
     branches: [ main ]
@@ -8,35 +7,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.0'
           channel: 'stable'
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: FORCE Gradle 8.13.0
+      - run: flutter pub get
+      - name: FORCE Gradle 8.13.0-all
         run: |
-          echo "Overwriting gradle wrapper to 8.13.0"
           echo 'distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13.0-bin.zip' > android/gradle/wrapper/gradle-wrapper.properties
-          rm -rf ~/.gradle/wrapper/dists/gradle-8.14.0*
-
-      - name: Build APK Release
-        run: flutter build apk --release --android-skip-build-dependency-validation
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13.0-all.zip' > android/gradle/wrapper/gradle-wrapper.properties
+          rm -rf ~/.gradle/wrapper/dists/gradle-8.*
+      - run: flutter build apk --release --android-skip-build-dependency-validation
