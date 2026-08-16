@@ -35,7 +35,7 @@ jobs:
           wget https://services.gradle.org/distributions/gradle-8.12.1-all.zip
           unzip gradle-8.12.1-all.zip -d ~/.gradle/wrapper/dists/
           rm gradle-8.12.1-all.zip
-          ~/.gradle/wrapper/dists/gradle-8.12.1/bin/gradle :app:assembleRelease --stacktrace
+          ~/.gradle/wrapper/dists/gradle-8.12.1/bin/gradle :app:assembleRelease --stacktrace --info
           cd ..
           cp build/app/outputs/flutter-apk/app-release.apk .
 
