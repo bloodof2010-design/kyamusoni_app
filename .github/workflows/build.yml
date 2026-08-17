@@ -7,19 +7,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-java@v4
         with: { distribution: 'temurin', java-version: '17' }
-        
       - uses: subosito/flutter-action@v2
-        with: { flutter-version: '3.47.0' }
+        with: { flutter-version: '3.47.0', channel: 'stable' }
 
-      - name: Force Gradle 8.4
+      - run: flutter pub get
+
+      - name: Build APK with Gradle stacktrace
         run: |
           cd android
-          ./gradlew wrapper --gradle-version 8.4 --distribution-type all
-          
-      - run: flutter pub get
-      
-      - name: Build APK
-        run: flutter build apk --release --verbose
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --stacktrace --info
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
