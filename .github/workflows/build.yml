@@ -35,5 +35,5 @@ jobs:
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
-environment:
-  sdk: '>=3.3.0 <4.0.0'  # was >=3.9.0
+:
+  sdk
