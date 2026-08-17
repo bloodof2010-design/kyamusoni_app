@@ -6,18 +6,8 @@ pluginManagement {
         assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
         return flutterSdkPath
     }()
-
     includeBuild("$flutterSDKPath/packages/flutter_tools/gradle")
-
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
 }
-
-plugins {
-    id "dev.flutter.flutter-gradle-plugin"
-}
-
+plugins { id "dev.flutter.flutter-gradle-plugin" }
 include ":app"
