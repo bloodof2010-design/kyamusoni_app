@@ -1,34 +1,27 @@
 name: kyamusoni_app
-description: A modern Flutter application called Kyamusoni App.
-publish_to: "none"
+description: "Kyamusoni App"
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.9.0 <4.0.0"
+  sdk: '>=3.3.0 <4.0.0'   # <-- THIS IS THE KEY CHANGE. Was >=3.9.0
+  flutter: ">=3.22.0"
 
 dependencies:
   flutter:
     sdk: flutter
-
-  cupertino_icons: ^1.0.8
+  # Add your other packages here. Don't change them yet.
+  # cupertino_icons: ^1.0.8
+  # http: ^1.1.0
+  # provider: ^6.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_launcher_icons: ^0.14.4
-  flutter_lints: ^6.0.0
+  flutter_lints: ^3.0.0  # This will auto-downgrade to ^2.0.0 if needed
 
 flutter:
   uses-material-design: true
-
-  assets:
-    - assets/icon/app_icon.png
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  # assets:
+  #   - assets/
