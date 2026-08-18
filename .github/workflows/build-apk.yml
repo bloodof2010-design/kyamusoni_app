@@ -1,43 +1,8 @@
-name: Build APK
-
-on:
-  push:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Flutter pub get
-        run: flutter pub get
-
-      - name: Build APK
-        run: |
-          cd android
-          ./gradlew app:assembleRelease --stacktrace
-          cd ..
-          mkdir -p build/app/outputs/flutter-apk
-          APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
-          cp "$APK" build/app/outputs/flutter-apk/app-release.apk
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kyamusoni-app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+- name: Build APK
+  run: |
+    chmod +x android/gradlew
+    android/gradlew -p android app:assembleRelease --stacktrace
+    mkdir -p build/app/outputs/flutter-apk
+    APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
+    cp "$APK" build/app/outputs/flutter-apk/app-release.apk
+    ls -lh build/app/outputs/flutter-apk/app-release.apk
