@@ -1,39 +1,23 @@
-name: Build APK
+- name: Get dependencies
+  run: flutter pub get
 
-on:
-  push:
-  workflow_dispatch:
+- name: Generate launcher icons
+  run: dart run flutter_launcher_icons
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+- name: Build APK
+  run: |
+    flutter build apk --release
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    echo "===== SEARCHING FOR APK ====="
+    find build android/app/build -type f -name "*.apk" -print
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+    mkdir -p build/app/outputs/flutter-apk
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+    APK=$(find build android/app/build -type f -name "app-release.apk" | head -n 1)
 
-      - name: Get dependencies
-        run: flutter pub get
+    if [ -z "$APK" ]; then
+      echo "ERROR: APK was not found"
+      exit 1
+    fi
 
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
-
-      - name: Build APK
-        run: |
-          set -o pipefail
-          flutter build apk --release 2>&1 | tee build.log
-          status=${PIPESTATUS[0]}
-          echo "===== ERROR ====="
-          grep -E -B2 -A3 "FAILURE:|Execution failed|error:|Error:|Caused by:" build.log || true
-          exit $status
+    cp "$APK" build/app/outputs/flutter-apk/app-release.apk
