@@ -22,11 +22,14 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Flutter version
         run: flutter --version
+
+      - name: Flutter doctor
+        run: flutter doctor -v
 
       - name: Get dependencies
         run: flutter pub get
@@ -34,25 +37,30 @@ jobs:
       - name: Generate app icons
         run: dart run flutter_launcher_icons
 
-      - name: Clean Flutter build
+      - name: Clean
         run: flutter clean
 
       - name: Get dependencies again
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build APK
+        run: flutter build apk --release -v
 
-      - name: Find generated APK
+      - name: Find all APK files
         if: always()
         run: |
-          echo "==== APK FILES ===="
-          find build -type f -name "*.apk" -print || true
+          echo "===== APK FILES ====="
+          find . -type f -name "*.apk" -print
+
+          echo "===== BUILD DIRECTORY ====="
+          find build -maxdepth 5 -type f -print 2>/dev/null || true
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
         if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-release-unsigned.apk
           if-no-files-found: error
