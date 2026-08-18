@@ -29,8 +29,22 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Build APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+      - name: Build APK and Report Errors
+        run: |
+          set +e
+          flutter build apk --release --android-skip-build-dependency-validation > build.log 2>&1
+          status=$?
+
+          echo "===== ERROR REPORT ====="
+          grep -n -E "FAILURE:|What went wrong:|Execution failed|Android resource linking failed|AAPT: error:|Gradle build failed|Error:|Caused by:" build.log | tail -100 || true
+
+          echo "===== APK REPORT ====="
+          find . -type f -name "*.apk" -print || true
+
+          echo "===== EXIT CODE ====="
+          echo "$status"
+
+          exit $status
 
       - name: Collect APK
         uses: actions/upload-artifact@v4
