@@ -1,4 +1,4 @@
 name: Build APK
-  run: |
+  run: 
     set -o pipefail
     flutter build apk --release 2>&1 | grep -E "FAILURE:|What went wrong:|Execution failed|error:|Error:|Caused by:" || true
