@@ -44,7 +44,32 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release -v
+        id: build_apk
+        continue-on-error: true
+        run: |
+          set +e
+
+          echo "===== BUILD START ====="
+
+          flutter build apk --release -v -- --stacktrace --info \
+            > android_build.log 2>&1
+
+          EXIT_CODE=$?
+
+          echo "===== BUILD EXIT CODE: $EXIT_CODE ====="
+
+          echo "===== LAST 200 LINES ====="
+          tail -n 200 android_build.log
+
+          exit $EXIT_CODE
+
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: android_build.log
+          if-no-files-found: warn
 
       - name: Find all APK files
         if: always()
@@ -54,6 +79,27 @@ jobs:
 
           echo "===== BUILD DIRECTORY ====="
           find build -maxdepth 5 -type f -print 2>/dev/null || true
+
+      - name: Show failure summary
+        if: steps.build_apk.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "APK BUILD FAILED"
+          echo "========================================"
+
+          echo "===== GRADLE FAILURE ====="
+          grep -n -A 40 -B 10 \
+            -E "FAILURE: Build failed|What went wrong|Where:|Caused by:|Exception|Execution failed" \
+            android_build.log | tail -n 250 || true
+
+          echo "========================================"
+          echo "FULL LOG IS AVAILABLE AS ARTIFACT:"
+          echo "android-build-log"
+          echo "========================================"
+
+      - name: Fail workflow if build failed
+        if: steps.build_apk.outcome == 'failure'
+        run: exit 1
 
       - name: Upload APK
         if: success()
