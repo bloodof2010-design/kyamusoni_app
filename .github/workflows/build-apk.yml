@@ -1,44 +1,20 @@
-name: Build APK
+- name: Build APK
+  run: |
+    set +e
+    flutter build apk --release > build.log 2>&1
+    status=$?
 
-on:
-  push:
-  workflow_dispatch:
+    echo "===== BUILD RESULT ====="
+    echo "Exit code: $status"
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+    echo "===== IMPORTANT ERRORS ====="
+    grep -n -E "FAILURE:|What went wrong:|Execution failed|Android resource linking failed|AAPT: error:|Error:|Caused by:" build.log | tail -50 || true
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    echo "===== APK FILES ====="
+    find . -type f -name "*.apk" -print || true
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
-
-      - name: Build APK
-        run: |
-          flutter build apk --release
-          echo "===== SEARCHING FOR APK ====="
-          find build android/app/build -type f -name "*.apk" -print
-          mkdir -p build/app/outputs/flutter-apk
-          APK=$(find build android/app/build -type f -name "app-release.apk" | head -n 1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not found"
-            exit 1
-          fi
-          cp "$APK" build/app/outputs/flutter-apk/app-release.apk
-          echo "APK FOUND: $APK"
+    if [ $status -ne 0 ]; then
+      echo "===== LAST 100 BUILD LINES ====="
+      tail -100 build.log
+      exit $status
+    fi
