@@ -1,4 +1,4 @@
-- name: Build APK
+name: Build APK
   run: |
     set +e
     flutter build apk --release > build.log 2>&1
