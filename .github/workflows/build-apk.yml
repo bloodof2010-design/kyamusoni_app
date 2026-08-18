@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -27,9 +27,6 @@ jobs:
 
       - name: Flutter version
         run: flutter --version
-
-      - name: Flutter doctor
-        run: flutter doctor -v
 
       - name: Get dependencies
         run: flutter pub get
@@ -43,27 +40,18 @@ jobs:
       - name: Get dependencies again
         run: flutter pub get
 
-      - name: Build APK
-        id: build_apk
-        continue-on-error: true
+      - name: Build APK with stacktrace
         run: |
-          set +e
+          set -o pipefail
+          flutter build apk --release -v 2>&1 | tee android_build.log
 
-          echo "===== BUILD START ====="
+      - name: Show APK files
+        if: always()
+        run: |
+          echo "===== APK FILES ====="
+          find . -type f -name "*.apk" -print
 
-          flutter build apk --release -v -- --stacktrace --info \
-            > android_build.log 2>&1
-
-          EXIT_CODE=$?
-
-          echo "===== BUILD EXIT CODE: $EXIT_CODE ====="
-
-          echo "===== LAST 200 LINES ====="
-          tail -n 200 android_build.log
-
-          exit $EXIT_CODE
-
-      - name: Upload full build log
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -71,42 +59,10 @@ jobs:
           path: android_build.log
           if-no-files-found: warn
 
-      - name: Find all APK files
-        if: always()
-        run: |
-          echo "===== APK FILES ====="
-          find . -type f -name "*.apk" -print
-
-          echo "===== BUILD DIRECTORY ====="
-          find build -maxdepth 5 -type f -print 2>/dev/null || true
-
-      - name: Show failure summary
-        if: steps.build_apk.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "APK BUILD FAILED"
-          echo "========================================"
-
-          echo "===== GRADLE FAILURE ====="
-          grep -n -A 40 -B 10 \
-            -E "FAILURE: Build failed|What went wrong|Where:|Caused by:|Exception|Execution failed" \
-            android_build.log | tail -n 250 || true
-
-          echo "========================================"
-          echo "FULL LOG IS AVAILABLE AS ARTIFACT:"
-          echo "android-build-log"
-          echo "========================================"
-
-      - name: Fail workflow if build failed
-        if: steps.build_apk.outcome == 'failure'
-        run: exit 1
-
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/app-release-unsigned.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
