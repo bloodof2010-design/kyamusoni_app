@@ -1,6 +1,5 @@
-      - name: Build APK
-        run: |
-          set +e
+      name: Build APK
+        run:set +e
           chmod +x android/gradlew
           android/gradlew -p android app:assembleRelease --stacktrace > build.log 2>&1
           status=$?
