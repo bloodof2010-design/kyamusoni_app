@@ -32,7 +32,7 @@ jobs:
       - name: Generate Gradle Wrapper and gradle-wrapper.jar
         run: |
           cd android
-          gradle wrapper --gradle-version 9.1.0
+          gradle wrapper --gradle-version 9.5
           chmod +x gradlew
           test -f gradle/wrapper/gradle-wrapper.jar
           echo "Gradle wrapper JAR created successfully."
