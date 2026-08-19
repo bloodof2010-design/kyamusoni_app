@@ -1,5 +1,5 @@
-      - name: Build APK
-        run: |
+       name: Build APK
+        run: 
           set +e
           cd android
           gradle app:assembleRelease --stacktrace > ../build.log 2>&1
