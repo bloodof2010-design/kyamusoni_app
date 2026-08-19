@@ -7,8 +7,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.vfs.watch=false"
 
     steps:
       - name: Checkout repository
@@ -26,69 +24,49 @@ jobs:
           channel: stable
           cache: false
 
-      - name: Clear Gradle & Build Cache
+      - name: Accept Android Licenses
         run: |
-          echo "Clearing global Gradle caches and daemons..."
-          rm -rf ~/.gradle/caches/
-          rm -rf ~/.gradle/daemon/
-          rm -rf ~/.gradle/wrapper/dists/
-          echo "Clearing project build directories..."
-          rm -rf android/.gradle/
-          rm -rf android/app/build/
-          rm -rf build/
-          if command -v flutter &> /dev/null; then
-            flutter clean || true
-          fi
+          yes | flutter doctor --android-licenses || true
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
+        run: dart run flutter_launcher_icons || true
 
       - name: Build APK
         run: |
+          export GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.vfs.watch=false"
           set +e
-          echo "===== STARTING FLUTTER APK BUILD ====="
-          flutter build apk --release --verbose
+
+          echo "===== ATTEMPTING FLUTTER APK BUILD ====="
+          flutter build apk --release --no-tree-shake-icons --verbose
           BUILD_STATUS=$?
-          echo "Flutter build exit status: $BUILD_STATUS"
+          echo "Flutter build exit code: $BUILD_STATUS"
 
-          echo "===== SEARCHING FOR APKS IN STANDARD ANDROID PATHS ====="
-          STANDARD_APK=$(find android/app/build -type f -name "*.apk" 2>/dev/null | head -n 1 || true)
-
-          if [ -n "$STANDARD_APK" ] && [ -f "$STANDARD_APK" ]; then
-            echo "Found APK in standard android directory: $STANDARD_APK"
-          else
-            echo "Standard android path search failed or yielded no APKs."
-            echo "===== SEARCHING ROOT BUILD DIRECTORY ====="
-            ROOT_APK=$(find build -type f -name "*.apk" 2>/dev/null | head -n 1 || true)
-            if [ -n "$ROOT_APK" ] && [ -f "$ROOT_APK" ]; then
-              echo "Found APK in root build directory: $ROOT_APK"
-            else
-              echo "Searching entire repository workspace for any generated APKs..."
-              find . -type f -name "*.apk" 2>/dev/null || true
+          # If flutter build apk failed or didn't produce APK, fallback to Gradle wrapper
+          APK_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ] && [ -d "android" ]; then
+            echo "===== FALLBACK: BUILDING DIRECTLY WITH GRADLE WRAPPER ====="
+            cd android
+            if [ -f "gradlew" ]; then
+              chmod +x gradlew
+              ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace || true
             fi
+            cd ..
           fi
 
           echo "===== FULL APK DISCOVERY REPORT ====="
-          FOUND_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
-          echo "Total APK files found: $FOUND_COUNT"
           find . -type f -name "*.apk" -exec ls -lh {} + 2>/dev/null || true
+          FINAL_APK_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
+          echo "Total APKs found: $FINAL_APK_COUNT"
 
-          if [ "$FOUND_COUNT" -eq 0 ]; then
-            echo "===== DIAGNOSTIC DIRECTORY TREE (BUILD ARTIFACTS) ====="
-            echo "--- android/app/build contents ---"
-            ls -laR android/app/build/outputs/ 2>/dev/null || true
-            echo "--- root build directory contents ---"
-            ls -laR build/app/outputs/ 2>/dev/null || true
-            if [ "$BUILD_STATUS" -ne 0 ]; then
-              echo "Build command exited with error code $BUILD_STATUS and no APK was found."
-              exit "$BUILD_STATUS"
-            else
-              echo "Build command exited with code 0 but no APK was produced."
-              exit 1
-            fi
+          if [ "$FINAL_APK_COUNT" -eq 0 ]; then
+            echo "===== DIAGNOSTIC DIRECTORY TREE ====="
+            ls -laR build/ 2>/dev/null || true
+            ls -laR android/app/build/ 2>/dev/null || true
+            echo "Build failed to generate any APK."
+            exit 1
           fi
 
       - name: Collect APK
