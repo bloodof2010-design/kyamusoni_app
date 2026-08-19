@@ -22,6 +22,21 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: false
+
+      - name: Clear Gradle & Build Cache
+        run: |
+          echo "Clearing global Gradle caches, daemons, and wrapper dists..."
+          rm -rf ~/.gradle/caches/
+          rm -rf ~/.gradle/daemon/
+          rm -rf ~/.gradle/wrapper/dists/
+          echo "Clearing project build directories..."
+          rm -rf android/.gradle/
+          rm -rf android/app/build/
+          rm -rf build/
+          if command -v flutter &> /dev/null; then
+            flutter clean || true
+          fi
 
       - name: Get dependencies
         run: flutter pub get
@@ -29,37 +44,12 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Check Android project
-        run: |
-          echo "===== ANDROID FILES ====="
-          find android -maxdepth 3 -type f | sort
-
       - name: Build APK
-        run: |
-          set +e
-          cd android
-          gradle app:assembleRelease --stacktrace > ../build.log 2>&1
-          status=$?
-          cd ..
-
-          echo "===== ERROR REPORT ====="
-          grep -n -E "FAILURE:|What went wrong:|Execution failed|AAPT: error:|Android resource linking failed|Could not|Error:|Caused by:" build.log | tail -100 || true
-
-          echo "===== APK REPORT ====="
-          find android -type f -name "*.apk" -print || true
-
-          echo "===== EXIT CODE ====="
-          echo "$status"
-
-          if [ "$status" -ne 0 ]; then
-            echo "===== LAST 100 LINES ====="
-            tail -100 build.log
-            exit "$status"
-          fi
+        run: flutter build apk --release
 
       - name: Collect APK
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-release-apk
-          path: android/app/build/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
