@@ -1,55 +1,46 @@
-name: Build APK
-
-on:
-  push:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: false
-
-      - name: Clear Gradle & Build Cache
+- name: Build APK
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.vfs.watch=false"
         run: |
-          echo "Clearing global Gradle caches, daemons, and wrapper dists..."
-          rm -rf ~/.gradle/caches/
-          rm -rf ~/.gradle/daemon/
-          rm -rf ~/.gradle/wrapper/dists/
-          echo "Clearing project build directories..."
-          rm -rf android/.gradle/
-          rm -rf android/app/build/
-          rm -rf build/
-          if command -v flutter &> /dev/null; then
-            flutter clean || true
+          set +e
+          echo "===== STARTING FLUTTER APK BUILD ====="
+          flutter build apk --release --verbose
+          BUILD_STATUS=$?
+          echo "Flutter build exit status: $BUILD_STATUS"
+
+          echo "===== SEARCHING FOR APKS IN STANDARD ANDROID PATHS ====="
+          STANDARD_APK=$(find android/app/build -type f -name "*.apk" 2>/dev/null | head -n 1 || true)
+
+          if [ -n "$STANDARD_APK" ] && [ -f "$STANDARD_APK" ]; then
+            echo "Found APK in standard android directory: $STANDARD_APK"
+          else
+            echo "Standard android path search failed or yielded no APKs."
+            echo "===== SEARCHING ROOT BUILD DIRECTORY ====="
+            ROOT_APK=$(find build -type f -name "*.apk" 2>/dev/null | head -n 1 || true)
+            if [ -n "$ROOT_APK" ] && [ -f "$ROOT_APK" ]; then
+              echo "Found APK in root build directory: $ROOT_APK"
+            else
+              echo "Searching entire repository workspace for any generated APKs..."
+              find . -type f -name "*.apk" 2>/dev/null || true
+            fi
           fi
 
-      - name: Get dependencies
-        run: flutter pub get
+          echo "===== FULL APK DISCOVERY REPORT ====="
+          FOUND_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
+          echo "Total APK files found: $FOUND_COUNT"
+          find . -type f -name "*.apk" -exec ls -lh {} + 2>/dev/null || true
 
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Collect APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kyamusoni-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          if [ "$FOUND_COUNT" -eq 0 ]; then
+            echo "===== DIAGNOSTIC DIRECTORY TREE (BUILD ARTIFACTS) ====="
+            echo "--- android/app/build contents ---"
+            ls -laR android/app/build/outputs/ 2>/dev/null || true
+            echo "--- root build directory contents ---"
+            ls -laR build/app/outputs/ 2>/dev/null || true
+            if [ "$BUILD_STATUS" -ne 0 ]; then
+              echo "Build command exited with error code $BUILD_STATUS and no APK was found."
+              exit "$BUILD_STATUS"
+            else
+              echo "Build command exited with code 0 but no APK was produced."
+              exit 1
+            fi
+          fi
