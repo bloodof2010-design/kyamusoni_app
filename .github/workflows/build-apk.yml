@@ -18,62 +18,43 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: false
-
-      - name: Accept Android Licenses
+      - name: Decode Debug Keystore
         run: |
-          yes | flutter doctor --android-licenses || true
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore || true
+          fi
 
-      - name: Get dependencies
-        run: flutter pub get
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          chmod +x android/gradlew 2>/dev/null || true
 
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons || true
-
-      - name: Build APK
+      - name: Build Android APK
         run: |
           export GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.vfs.watch=false"
           set +e
 
-          echo "===== ATTEMPTING FLUTTER APK BUILD ====="
-          flutter build apk --release --no-tree-shake-icons --verbose
-          BUILD_STATUS=$?
-          echo "Flutter build exit code: $BUILD_STATUS"
-
-          # If flutter build apk failed or didn't produce APK, fallback to Gradle wrapper
-          APK_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
-          if [ "$APK_COUNT" -eq 0 ] && [ -d "android" ]; then
-            echo "===== FALLBACK: BUILDING DIRECTLY WITH GRADLE WRAPPER ====="
-            cd android
-            if [ -f "gradlew" ]; then
-              chmod +x gradlew
-              ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace || true
-            fi
-            cd ..
-          fi
+          echo "===== BUILDING WITH GRADLE WRAPPER ====="
+          ./gradlew :app:assembleRelease :app:assembleDebug --no-daemon --stacktrace
+          GRADLE_STATUS=$?
+          echo "Gradle build exit code: $GRADLE_STATUS"
 
           echo "===== FULL APK DISCOVERY REPORT ====="
           find . -type f -name "*.apk" -exec ls -lh {} + 2>/dev/null || true
-          FINAL_APK_COUNT=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
-          echo "Total APKs found: $FINAL_APK_COUNT"
+          TOTAL_APKS=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
+          echo "Total APKs found: $TOTAL_APKS"
 
-          if [ "$FINAL_APK_COUNT" -eq 0 ]; then
-            echo "===== DIAGNOSTIC DIRECTORY TREE ====="
-            ls -laR build/ 2>/dev/null || true
-            ls -laR android/app/build/ 2>/dev/null || true
-            echo "Build failed to generate any APK."
+          if [ "$TOTAL_APKS" -eq 0 ]; then
+            echo "ERROR: No APK files were generated."
             exit 1
           fi
 
       - name: Collect APK
         uses: actions/upload-artifact@v4
         with:
-          name: kyamusoni-release-apk
+          name: app-apks
           path: |
-            build/app/outputs/flutter-apk/*.apk
-            android/app/build/outputs/apk/**/*.apk
+            app/build/outputs/apk/**/*.apk
+            **/outputs/**/*.apk
+            **/*.apk
           if-no-files-found: error
