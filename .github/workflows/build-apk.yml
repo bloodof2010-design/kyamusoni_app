@@ -18,16 +18,24 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Decode Debug Keystore
-        run: |
-          if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore || true
-          fi
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
-      - name: Grant execute permission for gradlew
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
+      - name: Generate Gradle Wrapper and gradle-wrapper.jar
         run: |
-          chmod +x gradlew 2>/dev/null || true
-          chmod +x android/gradlew 2>/dev/null || true
+          cd android
+          gradle wrapper --gradle-version 9.1.0
+          chmod +x gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          echo "Gradle wrapper JAR created successfully."
 
       - name: Build Android APK
         run: |
@@ -35,18 +43,23 @@ jobs:
           set +e
 
           echo "===== BUILDING WITH GRADLE WRAPPER ====="
-          ./gradlew :app:assembleRelease :app:assembleDebug --no-daemon --stacktrace
+          cd android
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace > ../build.log 2>&1
           GRADLE_STATUS=$?
+          cd ..
+
+          echo "===== ERROR REPORT ====="
+          grep -n -E "FAILURE:|What went wrong:|Execution failed|AAPT: error:|Android resource linking failed|Could not|Error:|Caused by:" build.log | tail -100 || true
+
+          echo "===== APK DISCOVERY REPORT ====="
+          find . -type f -name "*.apk" -exec ls -lh {} + 2>/dev/null || true
+
           echo "Gradle build exit code: $GRADLE_STATUS"
 
-          echo "===== FULL APK DISCOVERY REPORT ====="
-          find . -type f -name "*.apk" -exec ls -lh {} + 2>/dev/null || true
-          TOTAL_APKS=$(find . -type f -name "*.apk" 2>/dev/null | wc -l)
-          echo "Total APKs found: $TOTAL_APKS"
-
-          if [ "$TOTAL_APKS" -eq 0 ]; then
-            echo "ERROR: No APK files were generated."
-            exit 1
+          if [ "$GRADLE_STATUS" -ne 0 ]; then
+            echo "===== LAST 100 BUILD LINES ====="
+            tail -100 build.log
+            exit "$GRADLE_STATUS"
           fi
 
       - name: Collect APK
@@ -54,7 +67,5 @@ jobs:
         with:
           name: app-apks
           path: |
-            app/build/outputs/apk/**/*.apk
-            **/outputs/**/*.apk
-            **/*.apk
+            android/app/build/outputs/**/*.apk
           if-no-files-found: error
