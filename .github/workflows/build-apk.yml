@@ -29,13 +29,15 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Generate Gradle Wrapper and gradle-wrapper.jar
+      - name: Generate Gradle Wrapper
         run: |
           cd android
-          gradle wrapper --gradle-version 9.5
+          gradle wrapper --gradle-version 9.5 --distribution-type bin
           chmod +x gradlew
+          echo "===== GRADLE VERSION ====="
+          ./gradlew --version
           test -f gradle/wrapper/gradle-wrapper.jar
-          echo "Gradle wrapper JAR created successfully."
+          echo "Gradle wrapper JAR exists."
 
       - name: Build Android APK
         run: |
@@ -66,6 +68,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-apks
-          path: |
-            android/app/build/outputs/**/*.apk
+          path: android/app/build/outputs/**/*.apk
           if-no-files-found: error
