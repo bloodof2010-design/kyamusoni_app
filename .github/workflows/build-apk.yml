@@ -34,10 +34,17 @@ jobs:
           cd android
           gradle wrapper --gradle-version 9.5 --distribution-type bin
           chmod +x gradlew
-          echo "===== GRADLE VERSION ====="
-          ./gradlew --version
           test -f gradle/wrapper/gradle-wrapper.jar
           echo "Gradle wrapper JAR exists."
+
+      - name: Verify Gradle
+        run: |
+          cd android
+          echo "===== GRADLE VERSION ====="
+          ./gradlew --version
+          echo "===== GRADLE PATH ====="
+          which gradle || true
+          gradle --version || true
 
       - name: Build Android APK
         run: |
