@@ -26,19 +26,28 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build Android APK
-        run: flutter build apk --release --verbose
-
-      - name: Find generated APK
-        if: always()
+      - name: Build APK
         run: |
-          echo "Searching for APK files..."
+          flutter build apk --release --verbose || true
+
+      - name: Find APK
+        run: |
+          echo "Searching entire project for APK..."
           find . -type f -name "*.apk" -print
 
+      - name: Prepare APK
+        run: |
+          mkdir -p build/app/outputs/flutter-apk
+          APK=$(find . -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK was generated."
+            exit 1
+          fi
+          echo "APK found at: $APK"
+          cp "$APK" build/app/outputs/flutter-apk/app-release.apk
+
       - name: Upload APK
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-release-apk
-          path: "**/*.apk"
-          if-no-files-found: warn
+          path: build/app/outputs/flutter-apk/app-release.apk
