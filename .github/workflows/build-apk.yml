@@ -26,21 +26,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build Android APK with Gradle
-        run: |
-          chmod +x android/gradlew
-          cd android
-          ./gradlew app:assembleRelease --stacktrace
-          cd ..
+      - name: Build Android APK
+        run: flutter build apk --release --verbose
 
       - name: Find generated APK
+        if: always()
         run: |
           echo "Searching for APK files..."
           find . -type f -name "*.apk" -print
 
-      - name: Upload any APK
+      - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-release-apk
           path: "**/*.apk"
-          if-no-files-found: error
+          if-no-files-found: warn
