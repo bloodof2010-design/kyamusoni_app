@@ -26,11 +26,5 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Check Gradle version
-        run: |
-          chmod +x android/gradlew
-          android/gradlew --version
-
       - name: Build APK
-        run: |
-          android/gradlew -p android app:assembleRelease --stacktrace
+        run: flutter build apk --release
