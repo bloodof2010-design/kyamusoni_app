@@ -28,3 +28,13 @@ jobs:
 
       - name: Build APK
         run: flutter build apk --release
+
+      - name: Find APK
+        run: |
+          find build -type f -name "*.apk" -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kyamusoni-release-apk
+          path: "build/app/outputs/flutter-apk/*.apk"
