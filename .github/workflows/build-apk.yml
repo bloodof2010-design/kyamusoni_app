@@ -1,47 +1,55 @@
-      - name: Build APK with Gradle
-        id: build_apk
-        continue-on-error: true
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew app:assembleRelease --stacktrace --info
-          cd ..
+name: Build APK
 
-      - name: Report Gradle error
-        if: steps.build_apk.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       GRADLE APK BUILD FAILED"
-          echo "========================================"
-          echo ""
-          echo "===== GRADLE OUTPUT ====="
-          cd android
-          ./gradlew app:assembleRelease --stacktrace 2>&1 | tail -n 300
-          exit 1
+on:
+  push:
+  workflow_dispatch:
 
-      - name: Find APK
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate launcher icon
+        run: dart run flutter_launcher_icons
+
+      - name: Clean Flutter
+        run: flutter clean
+
+      - name: Get dependencies again
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --verbose 2>&1 | tee build.log
+
+      - name: Show APK files
+        if: always()
         run: |
-          echo "Searching for generated APK..."
+          echo "===== APK FILES ====="
           find . -type f -name "*.apk" -print
-
-      - name: Prepare APK
-        run: |
-          mkdir -p build/app/outputs/flutter-apk
-
-          APK=$(find android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: No release APK found."
-            find android/app/build -type f -print || true
-            exit 1
-          fi
-
-          echo "APK found at: $APK"
-          cp "$APK" build/app/outputs/flutter-apk/app-release.apk
+          echo "===== BUILD DIRECTORY ====="
+          find build -type f -print 2>/dev/null || true
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
