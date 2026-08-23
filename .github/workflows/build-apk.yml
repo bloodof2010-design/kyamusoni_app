@@ -35,11 +35,16 @@ jobs:
       - name: Get dependencies again
         run: flutter pub get
 
+      - name: Remove old signing files
+        run: |
+          rm -f android/release-key.jks
+          rm -f android/key.properties
+
       - name: Create release keystore
         id: keystore
         continue-on-error: true
         run: |
-          mkdir -p android
+          set -o pipefail
 
           keytool -genkeypair \
             -v \
@@ -49,7 +54,7 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -storepass "KyamusoniStore2026" \
-            -keypass "KyamusoniKey2026" \
+            -keypass "KyamusoniStore2026" \
             -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG" \
             2>&1 | tee keystore.log
 
@@ -61,9 +66,29 @@ jobs:
           echo "========================================"
           echo "       KEYSTORE CREATION FAILED"
           echo "========================================"
-          echo ""
           cat keystore.log
-          echo ""
+          echo "========================================"
+          exit 1
+
+      - name: Verify keystore
+        id: verify_keystore
+        continue-on-error: true
+        run: |
+          keytool -list \
+            -keystore android/release-key.jks \
+            -storepass "KyamusoniStore2026" \
+            -alias kyamusoni \
+            2>&1 | tee keystore-verify.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report keystore verification error
+        if: steps.verify_keystore.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "     KEYSTORE VERIFICATION FAILED"
+          echo "========================================"
+          cat keystore-verify.log
           echo "========================================"
           exit 1
 
@@ -71,7 +96,7 @@ jobs:
         run: |
           cat > android/key.properties <<'EOF'
           storePassword=KyamusoniStore2026
-          keyPassword=KyamusoniKey2026
+          keyPassword=KyamusoniStore2026
           keyAlias=kyamusoni
           storeFile=release-key.jks
           EOF
@@ -80,6 +105,8 @@ jobs:
         id: build
         continue-on-error: true
         run: |
+          set -o pipefail
+
           flutter build apk \
             --release \
             --target-platform android-arm \
@@ -98,6 +125,9 @@ jobs:
           echo "===== LAST 200 LINES ====="
           tail -n 200 build.log
           echo ""
+          echo "===== IMPORTANT ERRORS ====="
+          grep -n -E "FAILURE:|What went wrong:|Execution failed|KeytoolException|Given final block|BUILD FAILED|Error:" build.log | tail -n 100 || true
+          echo ""
           echo "========================================"
           exit 1
 
@@ -110,6 +140,7 @@ jobs:
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: armeabi-v7a APK was not generated."
+            find build -type f -print || true
             exit 1
           fi
 
@@ -120,17 +151,20 @@ jobs:
           ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
 
       - name: Verify APK signature
-        id: verify
+        id: verify_signature
         continue-on-error: true
         run: |
+          set -o pipefail
+
           APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
 
-          jarsigner -verify -verbose -certs "$APK" 2>&1 | tee signature.log
+          jarsigner -verify -verbose -certs "$APK" \
+            2>&1 | tee signature.log
 
           exit ${PIPESTATUS[0]}
 
       - name: Report signature error
-        if: steps.verify.outcome == 'failure'
+        if: steps.verify_signature.outcome == 'failure'
         run: |
           echo "========================================"
           echo "       APK SIGNATURE VERIFICATION FAILED"
