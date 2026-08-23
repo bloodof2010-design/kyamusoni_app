@@ -26,9 +26,17 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Generate launcher icon
+        run: dart run flutter_launcher_icons
+
+      - name: Clean Flutter build
+        run: flutter clean
+
+      - name: Get dependencies again
+        run: flutter pub get
+
       - name: Build APK
-        run: |
-          flutter build apk --release --verbose || true
+        run: flutter build apk --release --verbose
 
       - name: Find APK
         run: |
@@ -38,7 +46,7 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk
-          APK=$(find . -type f -name "*.apk" | head -n 1)
+          APK=$(find build/app/outputs/flutter-apk -type f -name "*.apk" | head -n 1)
           if [ -z "$APK" ]; then
             echo "ERROR: No APK was generated."
             exit 1
@@ -51,3 +59,4 @@ jobs:
         with:
           name: kyamusoni-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
