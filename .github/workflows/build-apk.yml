@@ -29,41 +29,78 @@ jobs:
       - name: Generate launcher icon
         run: dart run flutter_launcher_icons
 
-      - name: Clean
+      - name: Clean Flutter
         run: flutter clean
 
       - name: Get dependencies again
         run: flutter pub get
 
-      - name: Build APK
+      - name: Create release keystore
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flutter build apk --release --verbose 2>&1 | tee build.log
+          keytool -genkeypair \
+            -v \
+            -keystore android/release-key.jks \
+            -alias kyamusoni \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
 
-      - name: Find and prepare APK
+      - name: Create key properties
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "===== SEARCHING FOR APK ====="
-          find . -type f -name "*.apk" -print
+          cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=kyamusoni
+          storeFile=release-key.jks
+          EOF
 
-          APK=$(find . -type f -name "*.apk" | head -n 1)
+      - name: Build signed armeabi-v7a APK
+        run: |
+          flutter build apk \
+            --release \
+            --target-platform android-arm \
+            --split-per-abi \
+            --verbose
 
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
-            echo "===== LAST BUILD LOG ====="
-            tail -n 300 build.log
+      - name: Find armeabi-v7a APK
+        run: |
+          echo "===== GENERATED APK FILES ====="
+          find build -type f -name "*.apk" -print
+
+          APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: armeabi-v7a APK was not generated."
+            echo "===== BUILD DIRECTORY ====="
+            find build -type f -print || true
             exit 1
           fi
 
-          echo "APK FOUND: $APK"
-
-          mkdir -p release
-          cp "$APK" release/app-release.apk
+          mkdir -p build/app/outputs/flutter-apk/final
+          cp "$APK" build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
 
           echo "===== FINAL APK ====="
-          ls -lh release/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
 
-      - name: Upload APK
+      - name: Verify APK signature
+        run: |
+          APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
+
+          echo "===== APK SIGNATURE ====="
+          jarsigner -verify -verbose -certs "$APK"
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: kyamusoni-release-apk
-          path: release/app-release.apk
+          name: kyamusoni-armeabi-v7a-release
+          path: build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
           if-no-files-found: error
