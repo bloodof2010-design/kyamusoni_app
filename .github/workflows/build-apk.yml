@@ -1,62 +1,23 @@
-name: Build APK
-
-on:
-  push:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate launcher icon
-        run: dart run flutter_launcher_icons
-
-      - name: Clean Flutter build
-        run: flutter clean
-
-      - name: Get dependencies again
-        run: flutter pub get
-
       - name: Build APK
-        run: flutter build apk --release --verbose
-
-      - name: Find APK
+        id: build_apk
+        continue-on-error: true
         run: |
-          echo "Searching entire project for APK..."
-          find . -type f -name "*.apk" -print
+          set -o pipefail
+          flutter build apk --release --verbose 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
 
-      - name: Prepare APK
+      - name: Report build error
+        if: steps.build_apk.outcome == 'failure'
         run: |
-          mkdir -p build/app/outputs/flutter-apk
-          APK=$(find build/app/outputs/flutter-apk -type f -name "*.apk" | head -n 1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
-            exit 1
-          fi
-          echo "APK found at: $APK"
-          cp "$APK" build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kyamusoni-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          echo "========================================"
+          echo "           APK BUILD FAILED"
+          echo "========================================"
+          echo ""
+          echo "===== LAST 150 LINES ====="
+          tail -n 150 build.log
+          echo ""
+          echo "===== ERRORS / FAILURES ====="
+          grep -n -E "FAILURE:|What went wrong:|Execution failed|BUILD FAILED|Error:|ERROR|Exception:" build.log | tail -n 100 || true
+          echo ""
+          echo "========================================"
+          exit 1
