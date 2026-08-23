@@ -36,10 +36,9 @@ jobs:
         run: flutter pub get
 
       - name: Create release keystore
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          mkdir -p android
+
           keytool -genkeypair \
             -v \
             -keystore android/release-key.jks \
@@ -47,18 +46,15 @@ jobs:
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -keypass "$KEY_PASSWORD" \
+            -storepass "KyamusoniStore2026" \
+            -keypass "KyamusoniKey2026" \
             -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
 
       - name: Create key properties
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cat > android/key.properties <<EOF
-          storePassword=$KEYSTORE_PASSWORD
-          keyPassword=$KEY_PASSWORD
+          cat > android/key.properties <<'EOF'
+          storePassword=KyamusoniStore2026
+          keyPassword=KyamusoniKey2026
           keyAlias=kyamusoni
           storeFile=release-key.jks
           EOF
