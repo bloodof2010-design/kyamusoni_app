@@ -36,6 +36,8 @@ jobs:
         run: flutter pub get
 
       - name: Create release keystore
+        id: keystore
+        continue-on-error: true
         run: |
           mkdir -p android
 
@@ -48,7 +50,22 @@ jobs:
             -validity 10000 \
             -storepass "KyamusoniStore2026" \
             -keypass "KyamusoniKey2026" \
-            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
+            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG" \
+            2>&1 | tee keystore.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report keystore error
+        if: steps.keystore.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       KEYSTORE CREATION FAILED"
+          echo "========================================"
+          echo ""
+          cat keystore.log
+          echo ""
+          echo "========================================"
+          exit 1
 
       - name: Create key properties
         run: |
@@ -60,12 +77,29 @@ jobs:
           EOF
 
       - name: Build signed armeabi-v7a APK
+        id: build
+        continue-on-error: true
         run: |
           flutter build apk \
             --release \
             --target-platform android-arm \
             --split-per-abi \
-            --verbose
+            2>&1 | tee build.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report build error
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "          APK BUILD FAILED"
+          echo "========================================"
+          echo ""
+          echo "===== LAST 200 LINES ====="
+          tail -n 200 build.log
+          echo ""
+          echo "========================================"
+          exit 1
 
       - name: Find armeabi-v7a APK
         run: |
@@ -76,8 +110,6 @@ jobs:
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: armeabi-v7a APK was not generated."
-            echo "===== BUILD DIRECTORY ====="
-            find build -type f -print || true
             exit 1
           fi
 
@@ -88,11 +120,24 @@ jobs:
           ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
 
       - name: Verify APK signature
+        id: verify
+        continue-on-error: true
         run: |
           APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
 
-          echo "===== APK SIGNATURE ====="
-          jarsigner -verify -verbose -certs "$APK"
+          jarsigner -verify -verbose -certs "$APK" 2>&1 | tee signature.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report signature error
+        if: steps.verify.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       APK SIGNATURE VERIFICATION FAILED"
+          echo "========================================"
+          cat signature.log
+          echo "========================================"
+          exit 1
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
