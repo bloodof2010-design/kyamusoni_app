@@ -61,65 +61,21 @@ jobs:
 
       - name: Build APK
         run: |
-          set +e
-
           flutter build apk \
             --release \
             --target-platform android-arm \
             --split-per-abi \
-            --verbose > build.log 2>&1
-
-          code=$?
-
-          echo ""
-          echo "========================================"
-          echo "        BUILD EXIT CODE: $code"
-          echo "========================================"
-          echo ""
-
-          if [ "$code" -ne 0 ]; then
-            echo "========================================"
-            echo "           BUILD FAILED"
-            echo "========================================"
-            echo ""
-
-            echo "===== MATCHED ERRORS ====="
-            if [ -f build.log ]; then
-              grep -n -E \
-                'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|BUILD FAILED|Could not|Error:|Exception:|A problem occurred' \
-                build.log | tail -n 100 || true
-            else
-              echo "ERROR: build.log was not created."
-            fi
-
-            echo ""
-            echo "===== LAST 200 LINES ====="
-            if [ -f build.log ]; then
-              tail -n 200 build.log
-            else
-              echo "No build.log available."
-            fi
-
-            echo ""
-            echo "========================================"
-            echo "       END OF ERROR REPORT"
-            echo "========================================"
-
-            exit "$code"
-          fi
-
-          echo "========================================"
-          echo "          BUILD SUCCEEDED"
-          echo "========================================"
-
-          find build -type f -name '*.apk' -print
+            --verbose
 
       - name: Prepare APK
         run: |
+          echo "===== GENERATED APK FILES ====="
+          find build -type f -name '*.apk' -print
+
           APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: $APK not found"
+            echo "ERROR: armeabi-v7a APK was not generated."
             echo "===== ALL APK FILES ====="
             find . -type f -name '*.apk' -print
             exit 1
@@ -147,4 +103,4 @@ jobs:
         with:
           name: kyamusoni-armeabi-v7a-release
           path: final-apk/app-armeabi-v7a-release.apk
-          if-no-files-found: error
+          if-no-files-found: error       
