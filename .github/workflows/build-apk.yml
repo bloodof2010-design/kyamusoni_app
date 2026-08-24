@@ -1,5 +1,5 @@
-      - name: Build signed release APK
-        run: |
+      name: Build signed release APK
+        run: 
           set +e
 
           echo "===== CHECKING ANDROID PROJECT ====="
