@@ -39,6 +39,7 @@ jobs:
         run: |
           rm -f android/release-key.jks
           rm -f android/key.properties
+
           keytool -genkeypair -v \
             -keystore android/release-key.jks \
             -alias kyamusoni \
@@ -61,21 +62,56 @@ jobs:
       - name: Build APK
         run: |
           set +e
-          flutter build apk --release --target-platform android-arm --split-per-abi --verbose > build.log 2>&1
+
+          flutter build apk \
+            --release \
+            --target-platform android-arm \
+            --split-per-abi \
+            --verbose > build.log 2>&1
+
           code=$?
 
-          echo "===== BUILD EXIT CODE: $code ====="
+          echo ""
+          echo "========================================"
+          echo "        BUILD EXIT CODE: $code"
+          echo "========================================"
+          echo ""
 
           if [ "$code" -ne 0 ]; then
-            echo "===== BUILD FAILED ====="
+            echo "========================================"
+            echo "           BUILD FAILED"
+            echo "========================================"
+            echo ""
+
             echo "===== MATCHED ERRORS ====="
-            grep -n -E 'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|BUILD FAILED|Could not|Error:|Exception:' build.log | tail -n 100 || true
+            if [ -f build.log ]; then
+              grep -n -E \
+                'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|BUILD FAILED|Could not|Error:|Exception:|A problem occurred' \
+                build.log | tail -n 100 || true
+            else
+              echo "ERROR: build.log was not created."
+            fi
+
+            echo ""
             echo "===== LAST 200 LINES ====="
-            tail -n 200 build.log
+            if [ -f build.log ]; then
+              tail -n 200 build.log
+            else
+              echo "No build.log available."
+            fi
+
+            echo ""
+            echo "========================================"
+            echo "       END OF ERROR REPORT"
+            echo "========================================"
+
             exit "$code"
           fi
 
-          echo "===== BUILD SUCCEEDED ====="
+          echo "========================================"
+          echo "          BUILD SUCCEEDED"
+          echo "========================================"
+
           find build -type f -name '*.apk' -print
 
       - name: Prepare APK
@@ -90,11 +126,21 @@ jobs:
           fi
 
           mkdir -p final-apk
-          cp "$APK" final-apk/app-armeabi-v7a-release.apk
+
+          cp "$APK" \
+            final-apk/app-armeabi-v7a-release.apk
+
+          echo "===== FINAL APK ====="
+          ls -lh final-apk/app-armeabi-v7a-release.apk
 
       - name: Verify signature
         run: |
-          jarsigner -verify -verbose -certs final-apk/app-armeabi-v7a-release.apk
+          echo "===== VERIFYING APK SIGNATURE ====="
+
+          jarsigner -verify \
+            -verbose \
+            -certs \
+            final-apk/app-armeabi-v7a-release.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
