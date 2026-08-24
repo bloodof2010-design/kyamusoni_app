@@ -44,8 +44,6 @@ jobs:
         id: keystore
         continue-on-error: true
         run: |
-          set -o pipefail
-
           keytool -genkeypair \
             -v \
             -keystore android/release-key.jks \
@@ -55,10 +53,7 @@ jobs:
             -validity 10000 \
             -storepass "KyamusoniStore2026" \
             -keypass "KyamusoniStore2026" \
-            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG" \
-            2>&1 | tee keystore.log
-
-          exit ${PIPESTATUS[0]}
+            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
 
       - name: Report keystore error
         if: steps.keystore.outcome == 'failure'
@@ -66,7 +61,8 @@ jobs:
           echo "========================================"
           echo "       KEYSTORE CREATION FAILED"
           echo "========================================"
-          cat keystore.log
+          echo "The release keystore could not be created."
+          echo "Check the keytool error immediately above."
           echo "========================================"
           exit 1
 
@@ -74,15 +70,10 @@ jobs:
         id: verify_keystore
         continue-on-error: true
         run: |
-          set -o pipefail
-
           keytool -list \
             -keystore android/release-key.jks \
             -storepass "KyamusoniStore2026" \
-            -alias kyamusoni \
-            2>&1 | tee keystore-verify.log
-
-          exit ${PIPESTATUS[0]}
+            -alias kyamusoni
 
       - name: Report keystore verification error
         if: steps.verify_keystore.outcome == 'failure'
@@ -90,7 +81,8 @@ jobs:
           echo "========================================"
           echo "     KEYSTORE VERIFICATION FAILED"
           echo "========================================"
-          cat keystore-verify.log
+          echo "The keystore was created but could not be opened."
+          echo "Check the keytool error immediately above."
           echo "========================================"
           exit 1
 
@@ -107,22 +99,12 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          set -o pipefail
-
           cd android
           chmod +x gradlew
 
           ./gradlew app:assembleRelease \
             --stacktrace \
-            --no-daemon \
-            2>&1 | tee ../gradle-build.log
-
-          EXIT_CODE=${PIPESTATUS[0]}
-
-          cd ..
-
-          echo "GRADLE_EXIT_CODE=$EXIT_CODE"
-          exit $EXIT_CODE
+            --no-daemon
 
       - name: Report Gradle build error
         if: steps.build.outcome == 'failure'
@@ -131,19 +113,17 @@ jobs:
           echo "       GRADLE APK BUILD FAILED"
           echo "========================================"
           echo ""
-          echo "===== LAST 250 LINES ====="
-          tail -n 250 gradle-build.log
+          echo "The Gradle command failed."
+          echo "The complete Gradle error is shown directly"
+          echo "above this section in the Build APK step."
           echo ""
-          echo "===== IMPORTANT ERRORS ====="
-          grep -n -E \
-            "FAILURE:|What went wrong:|Execution failed|KeytoolException|Given final block|BUILD FAILED|Caused by:|Error:" \
-            gradle-build.log | tail -n 100 || true
+          echo "===== SEARCHING PROJECT FOR BUILD LOGS ====="
+          find . -type f \( -name "*.log" -o -name "*.txt" \) -print 2>/dev/null | head -n 50 || true
           echo ""
           echo "========================================"
           exit 1
 
       - name: Find generated APK
-        id: find_apk
         run: |
           echo "========================================"
           echo "       SEARCHING FOR GENERATED APK"
@@ -151,7 +131,7 @@ jobs:
 
           find . -type f -name "*.apk" -print
 
-          APK=$(find android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
             echo ""
@@ -179,14 +159,9 @@ jobs:
         id: verify_signature
         continue-on-error: true
         run: |
-          set -o pipefail
-
           APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
 
-          jarsigner -verify -verbose -certs "$APK" \
-            2>&1 | tee signature.log
-
-          exit ${PIPESTATUS[0]}
+          jarsigner -verify -verbose -certs "$APK"
 
       - name: Report signature error
         if: steps.verify_signature.outcome == 'failure'
@@ -194,7 +169,8 @@ jobs:
           echo "========================================"
           echo "       APK SIGNATURE VERIFICATION FAILED"
           echo "========================================"
-          cat signature.log
+          echo "The APK exists but its signature could not be verified."
+          echo "Check the jarsigner error immediately above."
           echo "========================================"
           exit 1
 
