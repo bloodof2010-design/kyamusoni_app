@@ -72,7 +72,9 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
-      - name: Generate Gradle wrapper
+      - name: Generate Gradle wrapper 9.5
+        id: generate_wrapper
+        continue-on-error: true
         run: |
           set +e
 
@@ -82,35 +84,46 @@ jobs:
 
           cd android
 
-          gradle wrapper --gradle-version 8.14 \
+          gradle wrapper --gradle-version 9.5 \
             2>&1 | tee ../wrapper-build.log
 
           CODE=${PIPESTATUS[0]}
 
-          cd ..
-
           if [ "$CODE" -ne 0 ]; then
             echo ""
-            echo "===== GRADLE WRAPPER GENERATION FAILED ====="
-            echo ""
-            if [ -f wrapper-build.log ]; then
-              tail -n 200 wrapper-build.log
-            fi
+            echo "===== WRAPPER GENERATION FAILED ====="
+            tail -n 200 ../wrapper-build.log || true
             exit "$CODE"
           fi
 
-          chmod +x android/gradlew
+          chmod +x gradlew
 
           echo ""
-          echo "===== GRADLE WRAPPER CREATED ====="
-          ls -lh android/gradlew
-          ls -lh android/gradle/wrapper/
+          echo "===== ACTUAL GRADLE VERSION ====="
+          ./gradlew --version
+
+          cd ..
+
+      - name: Report wrapper failure
+        if: steps.generate_wrapper.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       GRADLE WRAPPER ERROR"
+          echo "========================================"
+
+          if [ -f wrapper-build.log ]; then
+            tail -n 200 wrapper-build.log
+          else
+            echo "ERROR: wrapper-build.log was not created."
+          fi
+
+          exit 1
 
       - name: Check Gradle wrapper
         run: |
           set -e
 
-          echo "===== GRADLE WRAPPER ====="
+          echo "===== CHECKING GRADLE WRAPPER ====="
 
           if [ ! -f android/gradlew ]; then
             echo "ERROR: android/gradlew does not exist."
@@ -119,7 +132,11 @@ jobs:
 
           chmod +x android/gradlew
 
-          ls -lh android/gradlew
+          echo ""
+          echo "===== GRADLE VERSION ====="
+          cd android
+          ./gradlew --version
+          cd ..
 
       - name: Build APK with Gradle
         id: build_apk
@@ -187,8 +204,6 @@ jobs:
           echo "========================================"
 
           if [ -f gradle-build.log ]; then
-            echo ""
-            echo "===== LAST 300 LINES ====="
             tail -n 300 gradle-build.log
           else
             echo "ERROR: gradle-build.log was not created."
@@ -227,7 +242,7 @@ jobs:
           fi
 
           echo ""
-          echo "FOUND:"
+          echo "FOUND APK:"
           echo "$APK"
 
           mkdir -p final-apk
