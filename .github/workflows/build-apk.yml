@@ -1,11 +1,115 @@
-      - name: Build signed armeabi-v7a APK
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate launcher icon
+        run: dart run flutter_launcher_icons
+
+      - name: Clean Flutter
+        run: flutter clean
+
+      - name: Get dependencies again
+        run: flutter pub get
+
+      - name: Remove old signing files
+        run: |
+          rm -f android/release-key.jks
+          rm -f android/key.properties
+
+      - name: Create release keystore
+        id: keystore
+        continue-on-error: true
+        run: |
+          set -o pipefail
+
+          keytool -genkeypair \
+            -v \
+            -keystore android/release-key.jks \
+            -alias kyamusoni \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "KyamusoniStore2026" \
+            -keypass "KyamusoniStore2026" \
+            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG" \
+            2>&1 | tee keystore.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report keystore error
+        if: steps.keystore.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       KEYSTORE CREATION FAILED"
+          echo "========================================"
+          cat keystore.log
+          echo "========================================"
+          exit 1
+
+      - name: Verify keystore
+        id: verify_keystore
+        continue-on-error: true
+        run: |
+          set -o pipefail
+
+          keytool -list \
+            -keystore android/release-key.jks \
+            -storepass "KyamusoniStore2026" \
+            -alias kyamusoni \
+            2>&1 | tee keystore-verify.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report keystore verification error
+        if: steps.verify_keystore.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "     KEYSTORE VERIFICATION FAILED"
+          echo "========================================"
+          cat keystore-verify.log
+          echo "========================================"
+          exit 1
+
+      - name: Create key properties
+        run: |
+          cat > android/key.properties <<'EOF'
+          storePassword=KyamusoniStore2026
+          keyPassword=KyamusoniStore2026
+          keyAlias=kyamusoni
+          storeFile=release-key.jks
+          EOF
+
+      - name: Build signed release APK
         id: build
         continue-on-error: true
         run: |
           set -o pipefail
 
           cd android
-
           chmod +x gradlew
 
           ./gradlew app:assembleRelease \
@@ -18,7 +122,6 @@
           cd ..
 
           echo "GRADLE_EXIT_CODE=$EXIT_CODE"
-
           exit $EXIT_CODE
 
       - name: Report Gradle build error
@@ -71,3 +174,33 @@
           echo ""
           echo "===== FINAL APK ====="
           ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
+
+      - name: Verify APK signature
+        id: verify_signature
+        continue-on-error: true
+        run: |
+          set -o pipefail
+
+          APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
+
+          jarsigner -verify -verbose -certs "$APK" \
+            2>&1 | tee signature.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Report signature error
+        if: steps.verify_signature.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       APK SIGNATURE VERIFICATION FAILED"
+          echo "========================================"
+          cat signature.log
+          echo "========================================"
+          exit 1
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kyamusoni-armeabi-v7a-release
+          path: build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
+          if-no-files-found: error
