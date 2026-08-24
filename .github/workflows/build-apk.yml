@@ -53,6 +53,7 @@ jobs:
       - name: Verify signing key
         run: |
           keytool -list \
+            -v \
             -keystore android/release-key.jks \
             -storepass KyamusoniStore2026 \
             -alias kyamusoni
@@ -66,15 +67,17 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
-      - name: Build APK
+      - name: Build APK - FORCE ERROR OUTPUT
         id: build_apk
         continue-on-error: true
         run: |
-          set -o pipefail
+          set +e
 
           echo "========================================"
-          echo "           STARTING APK BUILD"
+          echo "       STARTING FLUTTER APK BUILD"
           echo "========================================"
+
+          echo "::group::FULL FLUTTER BUILD"
 
           flutter build apk \
             --release \
@@ -82,39 +85,78 @@ jobs:
             --split-per-abi \
             --verbose 2>&1 | tee build.log
 
-          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          CODE=${PIPESTATUS[0]}
+
+          echo "::endgroup::"
 
           echo ""
           echo "========================================"
-          echo "       BUILD EXIT CODE: $BUILD_EXIT_CODE"
+          echo "       BUILD EXIT CODE: $CODE"
           echo "========================================"
 
-          exit "$BUILD_EXIT_CODE"
+          if [ "$CODE" -ne 0 ]; then
+            echo "::error title=Flutter APK Build Failed::Flutter exited with code $CODE"
 
-      - name: Full build error report
+            echo ""
+            echo "===== LAST 500 LINES ====="
+            tail -n 500 build.log || true
+
+            exit "$CODE"
+          fi
+
+      - name: FORCE ERROR REPORT
         if: steps.build_apk.outcome == 'failure'
         run: |
           echo "========================================"
-          echo "           APK BUILD FAILED"
+          echo "       FORCED BUILD ERROR REPORT"
           echo "========================================"
-          echo ""
 
           if [ -f build.log ]; then
-            echo "===== IMPORTANT ERRORS ====="
+
+            echo ""
+            echo "===== FIRST IMPORTANT ERRORS ====="
+
             grep -n -E \
-              'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED' \
-              build.log | tail -n 100 || true
+              'FAILURE:|What went wrong:|Execution failed for task|Caused by:|BUILD FAILED|KeytoolException|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
+              build.log | head -n 50 || true
 
             echo ""
-            echo "===== LAST 250 LINES ====="
-            tail -n 250 build.log
+            echo "===== GRADLE FAILURE CONTEXT ====="
+
+            awk '
+              /FAILURE:/ {show=1}
+              show {print}
+              show && /BUILD FAILED/ {exit}
+            ' build.log || true
 
             echo ""
-            echo "===== COMPLETE BUILD LOG ====="
-            cat build.log
+            echo "===== LAST 500 LINES ====="
+            tail -n 500 build.log
+
+            echo ""
+            echo "===== WRITING ERROR TO GITHUB SUMMARY ====="
+
+            {
+              echo "## ❌ Kyamusoni APK Build Failed"
+              echo ""
+              echo "### Important errors"
+              echo '```text'
+
+              grep -n -E \
+                'FAILURE:|What went wrong:|Execution failed for task|Caused by:|BUILD FAILED|KeytoolException|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
+                build.log | head -n 100 || true
+
+              echo '```'
+              echo ""
+              echo "### Last 100 lines"
+              echo '```text'
+              tail -n 100 build.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
           else
+            echo "::error title=Missing build log::build.log was not created"
             echo "ERROR: build.log was not created."
-            echo "The Build APK step output above is the original build output."
           fi
 
           echo ""
