@@ -72,80 +72,76 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
-      - name: Generate Gradle wrapper 9.5
-        id: generate_wrapper
+      - name: Verify Gradle wrapper
+        id: verify_gradle
         continue-on-error: true
         run: |
           set +e
 
           echo "========================================"
-          echo "       GENERATING GRADLE WRAPPER"
+          echo "       VERIFYING PROJECT GRADLE"
           echo "========================================"
-
-          cd android
-
-          gradle wrapper --gradle-version 9.5 \
-            2>&1 | tee ../wrapper-build.log
-
-          CODE=${PIPESTATUS[0]}
-
-          if [ "$CODE" -ne 0 ]; then
-            echo ""
-            echo "===== WRAPPER GENERATION FAILED ====="
-            tail -n 200 ../wrapper-build.log || true
-            exit "$CODE"
-          fi
-
-          chmod +x gradlew
-
-          echo ""
-          echo "===== ACTUAL GRADLE VERSION ====="
-          ./gradlew --version
-
-          cd ..
-
-      - name: Report wrapper failure
-        if: steps.generate_wrapper.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       GRADLE WRAPPER ERROR"
-          echo "========================================"
-
-          if [ -f wrapper-build.log ]; then
-            tail -n 200 wrapper-build.log
-          else
-            echo "ERROR: wrapper-build.log was not created."
-          fi
-
-          exit 1
-
-      - name: Check Gradle wrapper
-        run: |
-          set -e
-
-          echo "===== CHECKING GRADLE WRAPPER ====="
 
           if [ ! -f android/gradlew ]; then
             echo "ERROR: android/gradlew does not exist."
             exit 1
           fi
 
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "ERROR: gradle-wrapper.jar does not exist."
+            exit 1
+          fi
+
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "ERROR: gradle-wrapper.properties does not exist."
+            exit 1
+          fi
+
+          echo ""
+          echo "===== WRAPPER CONFIGURATION ====="
+          grep -n "distributionUrl" \
+            android/gradle/wrapper/gradle-wrapper.properties
+
           chmod +x android/gradlew
 
           echo ""
-          echo "===== GRADLE VERSION ====="
+          echo "===== ACTUAL GRADLE VERSION ====="
+
           cd android
           ./gradlew --version
+          CODE=$?
           cd ..
 
-      - name: Build APK with Gradle
+          echo ""
+          echo "Gradle wrapper exit code: $CODE"
+
+          if [ "$CODE" -ne 0 ]; then
+            echo "ERROR: Gradle wrapper failed."
+            exit "$CODE"
+          fi
+
+      - name: Stop if wrong Gradle version
+        if: steps.verify_gradle.outcome == 'failure'
+        run: |
+          echo "========================================"
+          echo "       GRADLE WRAPPER VERIFICATION FAILED"
+          echo "========================================"
+          echo ""
+          echo "The project Gradle wrapper is invalid or unavailable."
+          echo "Expected Gradle version: 8.13"
+          echo ""
+          echo "===== WRAPPER FILES ====="
+          find android/gradle -maxdepth 3 -type f -print 2>/dev/null || true
+          exit 1
+
+      - name: Build signed armeabi-v7a APK
         id: build_apk
         continue-on-error: true
         run: |
           set +e
 
           echo "========================================"
-          echo "       STARTING GRADLE BUILD"
+          echo "       BUILDING SIGNED APK"
           echo "========================================"
 
           cd android
@@ -167,11 +163,13 @@ jobs:
 
           if [ "$CODE" -ne 0 ]; then
             echo ""
-            echo "========================================"
-            echo "       GRADLE BUILD FAILED"
-            echo "========================================"
+            echo "===== IMPORTANT ERRORS ====="
 
             if [ -f gradle-build.log ]; then
+              grep -n -E \
+                'FAILURE:|What went wrong:|Execution failed for task|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
+                gradle-build.log | tail -n 100 || true
+
               echo ""
               echo "===== LAST 300 LINES ====="
               tail -n 300 gradle-build.log
@@ -179,31 +177,29 @@ jobs:
               echo "ERROR: gradle-build.log was not created."
             fi
 
-            echo ""
-            echo "========================================"
-            echo "       END GRADLE ERROR REPORT"
-            echo "========================================"
-
             exit "$CODE"
           fi
 
           echo ""
-          echo "========================================"
-          echo "       GRADLE BUILD SUCCESSFUL"
-          echo "========================================"
-
-          echo ""
-          echo "===== SEARCHING FOR APK FILES ====="
+          echo "===== GRADLE BUILD SUCCESSFUL ====="
           find . -type f -name "*.apk" -print
 
-      - name: Report Gradle failure
+      - name: Report build failure
         if: steps.build_apk.outcome == 'failure'
         run: |
           echo "========================================"
-          echo "       FINAL GRADLE ERROR REPORT"
+          echo "       FINAL BUILD ERROR REPORT"
           echo "========================================"
 
           if [ -f gradle-build.log ]; then
+            echo ""
+            echo "===== IMPORTANT ERRORS ====="
+            grep -n -E \
+              'FAILURE:|What went wrong:|Execution failed for task|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
+              gradle-build.log | tail -n 100 || true
+
+            echo ""
+            echo "===== LAST 300 LINES ====="
             tail -n 300 gradle-build.log
           else
             echo "ERROR: gradle-build.log was not created."
@@ -211,21 +207,19 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo "       END ERROR REPORT"
+          echo "       END OF BUILD ERROR REPORT"
           echo "========================================"
 
           exit 1
 
-      - name: Locate armeabi-v7a APK
+      - name: Locate APK
         run: |
           set -e
 
           echo "========================================"
-          echo "       SEARCHING FOR GENERATED APK"
+          echo "       SEARCHING FOR APK FILES"
           echo "========================================"
 
-          echo ""
-          echo "===== ALL APK FILES ====="
           find . -type f -name "*.apk" -print
 
           APK=$(find . -type f -name "*.apk" \
@@ -233,24 +227,19 @@ jobs:
             | head -n 1)
 
           if [ -z "$APK" ]; then
+            echo "ERROR: No armeabi-v7a APK found."
             echo ""
-            echo "ERROR: No armeabi-v7a APK was found."
-            echo ""
-            echo "===== COMPLETE APK SEARCH ====="
-            find . -type f -name "*.apk" -print
+            echo "===== BUILD OUTPUT DIRECTORIES ====="
+            find build android/build -type f 2>/dev/null | head -n 300 || true
             exit 1
           fi
 
-          echo ""
-          echo "FOUND APK:"
-          echo "$APK"
+          echo "FOUND: $APK"
 
           mkdir -p final-apk
 
           cp "$APK" final-apk/app-armeabi-v7a-release.apk
 
-          echo ""
-          echo "===== FINAL APK ====="
           ls -lh final-apk/app-armeabi-v7a-release.apk
 
       - name: Verify APK signature
@@ -263,11 +252,7 @@ jobs:
           echo "       VERIFYING APK SIGNATURE"
           echo "========================================"
 
-          jarsigner \
-            -verify \
-            -verbose \
-            -certs \
-            "$APK"
+          jarsigner -verify -verbose -certs "$APK"
 
       - name: Verify APK contents
         run: |
@@ -275,15 +260,10 @@ jobs:
 
           APK="final-apk/app-armeabi-v7a-release.apk"
 
-          echo "========================================"
-          echo "       APK FINAL VERIFICATION"
-          echo "========================================"
-
-          ls -lh "$APK"
-
           unzip -t "$APK" >/dev/null
 
           echo "APK archive is valid."
+          ls -lh "$APK"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
