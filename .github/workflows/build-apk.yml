@@ -1,182 +1,32 @@
-name: Build APK
-
-on:
-  push:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate launcher icon
-        run: dart run flutter_launcher_icons
-
-      - name: Clean Flutter
-        run: flutter clean
-
-      - name: Get dependencies again
-        run: flutter pub get
-
-      - name: Remove old signing files
-        run: |
-          rm -f android/release-key.jks
-          rm -f android/key.properties
-
-      - name: Create release keystore
-        id: keystore
-        continue-on-error: true
-        run: |
-          keytool -genkeypair \
-            -v \
-            -keystore android/release-key.jks \
-            -alias kyamusoni \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass "KyamusoniStore2026" \
-            -keypass "KyamusoniStore2026" \
-            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
-
-      - name: Report keystore error
-        if: steps.keystore.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       KEYSTORE CREATION FAILED"
-          echo "========================================"
-          echo "The release keystore could not be created."
-          echo "Check the keytool error immediately above."
-          echo "========================================"
-          exit 1
-
-      - name: Verify keystore
-        id: verify_keystore
-        continue-on-error: true
-        run: |
-          keytool -list \
-            -keystore android/release-key.jks \
-            -storepass "KyamusoniStore2026" \
-            -alias kyamusoni
-
-      - name: Report keystore verification error
-        if: steps.verify_keystore.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "     KEYSTORE VERIFICATION FAILED"
-          echo "========================================"
-          echo "The keystore was created but could not be opened."
-          echo "Check the keytool error immediately above."
-          echo "========================================"
-          exit 1
-
-      - name: Create key properties
-        run: |
-          cat > android/key.properties <<'EOF'
-          storePassword=KyamusoniStore2026
-          keyPassword=KyamusoniStore2026
-          keyAlias=kyamusoni
-          storeFile=release-key.jks
-          EOF
-
-      - name: Build signed release APK
-        id: build
-        continue-on-error: true
-        run: |
+      name: Build signed release APK
+        run:
           cd android
           chmod +x gradlew
 
           ./gradlew app:assembleRelease \
             --stacktrace \
-            --no-daemon
+            --no-daemon \
+            2>&1 | tee ../gradle-build.log
 
-      - name: Report Gradle build error
-        if: steps.build.outcome == 'failure'
-        run: |
+          EXIT_CODE=${PIPESTATUS[0]}
+
+          cd ..
+
           echo "========================================"
-          echo "       GRADLE APK BUILD FAILED"
+          echo "           GRADLE BUILD RESULT"
           echo "========================================"
+          echo "Exit code: $EXIT_CODE"
           echo ""
-          echo "The Gradle command failed."
-          echo "The complete Gradle error is shown directly"
-          echo "above this section in the Build APK step."
-          echo ""
-          echo "===== SEARCHING PROJECT FOR BUILD LOGS ====="
-          find . -type f \( -name "*.log" -o -name "*.txt" \) -print 2>/dev/null | head -n 50 || true
-          echo ""
-          echo "========================================"
-          exit 1
 
-      - name: Find generated APK
-        run: |
-          echo "========================================"
-          echo "       SEARCHING FOR GENERATED APK"
-          echo "========================================"
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "===== IMPORTANT GRADLE ERRORS ====="
+            grep -n -E \
+              "FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:" \
+              gradle-build.log | tail -n 100 || true
 
-          find . -type f -name "*.apk" -print
-
-          APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
             echo ""
-            echo "ERROR: Gradle completed but no APK was found."
-            echo ""
-            echo "===== ANDROID BUILD FILES ====="
-            find android/app/build -type f -print 2>/dev/null || true
-            exit 1
+            echo "===== LAST 100 LINES ====="
+            tail -n 100 gradle-build.log
+
+            exit "$EXIT_CODE"
           fi
-
-          echo ""
-          echo "APK FOUND:"
-          echo "$APK"
-
-          mkdir -p build/app/outputs/flutter-apk/final
-
-          cp "$APK" \
-            build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
-
-          echo ""
-          echo "===== FINAL APK ====="
-          ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
-
-      - name: Verify APK signature
-        id: verify_signature
-        continue-on-error: true
-        run: |
-          APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
-
-          jarsigner -verify -verbose -certs "$APK"
-
-      - name: Report signature error
-        if: steps.verify_signature.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       APK SIGNATURE VERIFICATION FAILED"
-          echo "========================================"
-          echo "The APK exists but its signature could not be verified."
-          echo "Check the jarsigner error immediately above."
-          echo "========================================"
-          exit 1
-
-      - name: Upload signed APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: kyamusoni-armeabi-v7a-release
-          path: build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
-          if-no-files-found: error
