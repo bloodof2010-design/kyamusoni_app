@@ -9,139 +9,96 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Java
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
 
-      - name: Set up Flutter
+      - name: Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Get dependencies
+      - name: Dependencies
         run: flutter pub get
 
-      - name: Generate launcher icon
+      - name: Launcher icon
         run: dart run flutter_launcher_icons
 
-      - name: Clean Flutter
+      - name: Clean
         run: flutter clean
 
-      - name: Get dependencies again
+      - name: Dependencies again
         run: flutter pub get
 
-      - name: Remove old signing files
+      - name: Create signing key
         run: |
           rm -f android/release-key.jks
           rm -f android/key.properties
-
-      - name: Create release keystore
-        run: |
-          keytool -genkeypair \
-            -v \
+          keytool -genkeypair -v \
             -keystore android/release-key.jks \
             -alias kyamusoni \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass "KyamusoniStore2026" \
-            -keypass "KyamusoniStore2026" \
+            -storepass KyamusoniStore2026 \
+            -keypass KyamusoniStore2026 \
             -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
 
-      - name: Verify keystore
+      - name: Signing properties
         run: |
-          keytool -list \
-            -keystore android/release-key.jks \
-            -storepass "KyamusoniStore2026" \
-            -alias kyamusoni
+          printf '%s\n' \
+            'storePassword=KyamusoniStore2026' \
+            'keyPassword=KyamusoniStore2026' \
+            'keyAlias=kyamusoni' \
+            'storeFile=release-key.jks' \
+            > android/key.properties
 
-      - name: Create key properties
-        run: |
-          cat > android/key.properties <<'EOF'
-          storePassword=KyamusoniStore2026
-          keyPassword=KyamusoniStore2026
-          keyAlias=kyamusoni
-          storeFile=release-key.jks
-          EOF
-
-      - name: Build signed release APK
+      - name: Build APK
         run: |
           set +e
+          flutter build apk --release --target-platform android-arm --split-per-abi --verbose > build.log 2>&1
+          code=$?
 
-          echo "===== CHECKING ANDROID PROJECT ====="
-          ls -la android
-          echo ""
+          echo "===== BUILD EXIT CODE: $code ====="
 
-          echo "===== BUILDING APK ====="
-
-          flutter build apk \
-            --release \
-            --target-platform android-arm \
-            --split-per-abi \
-            --verbose \
-            2>&1 | tee gradle-build.log
-
-          EXIT_CODE=${PIPESTATUS[0]}
-
-          echo ""
-          echo "========================================"
-          echo "           GRADLE BUILD RESULT"
-          echo "========================================"
-          echo "Exit code: $EXIT_CODE"
-          echo ""
-
-          if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "===== IMPORTANT ERRORS ====="
-            grep -n -E \
-              "FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:" \
-              gradle-build.log | tail -n 100 || true
-
-            echo ""
-            echo "===== LAST 150 LINES ====="
-            tail -n 150 gradle-build.log
-
-            exit "$EXIT_CODE"
+          if [ "$code" -ne 0 ]; then
+            echo "===== BUILD FAILED ====="
+            echo "===== MATCHED ERRORS ====="
+            grep -n -E 'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|BUILD FAILED|Could not|Error:|Exception:' build.log | tail -n 100 || true
+            echo "===== LAST 200 LINES ====="
+            tail -n 200 build.log
+            exit "$code"
           fi
 
-      - name: Find armeabi-v7a APK
-        run: |
-          echo "===== GENERATED APK FILES ====="
-          find . -type f -name "*.apk" -print
+          echo "===== BUILD SUCCEEDED ====="
+          find build -type f -name '*.apk' -print
 
+      - name: Prepare APK
+        run: |
           APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: armeabi-v7a APK was not generated."
-            echo ""
-            echo "===== BUILD DIRECTORY ====="
-            find build -type f -print 2>/dev/null || true
+            echo "ERROR: $APK not found"
+            echo "===== ALL APK FILES ====="
+            find . -type f -name '*.apk' -print
             exit 1
           fi
 
-          mkdir -p build/app/outputs/flutter-apk/final
+          mkdir -p final-apk
+          cp "$APK" final-apk/app-armeabi-v7a-release.apk
 
-          cp "$APK" \
-            build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
-
-          echo "===== FINAL APK ====="
-          ls -lh build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
-
-      - name: Verify APK signature
+      - name: Verify signature
         run: |
-          APK="build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk"
+          jarsigner -verify -verbose -certs final-apk/app-armeabi-v7a-release.apk
 
-          echo "===== VERIFYING APK SIGNATURE ====="
-
-          jarsigner -verify -verbose -certs "$APK"
-
-      - name: Upload signed APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-armeabi-v7a-release
-          path: build/app/outputs/flutter-apk/final/app-armeabi-v7a-release.apk
+          path: final-apk/app-armeabi-v7a-release.apk
           if-no-files-found: error
