@@ -53,12 +53,11 @@ jobs:
       - name: Verify signing key
         run: |
           keytool -list \
-            -v \
             -keystore android/release-key.jks \
             -storepass KyamusoniStore2026 \
             -alias kyamusoni
 
-      - name: Signing properties
+      - name: Create signing properties
         run: |
           printf '%s\n' \
             'storePassword=KyamusoniStore2026' \
@@ -66,9 +65,6 @@ jobs:
             'keyAlias=kyamusoni' \
             'storeFile=release-key.jks' \
             > android/key.properties
-
-          echo "===== key.properties created ====="
-          cat android/key.properties | sed 's/Password=.*/Password=********/'
 
       - name: Build APK
         id: build_apk
@@ -90,13 +86,12 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo "       FLUTTER BUILD EXIT CODE"
-          echo "       $BUILD_EXIT_CODE"
+          echo "       BUILD EXIT CODE: $BUILD_EXIT_CODE"
           echo "========================================"
 
           exit "$BUILD_EXIT_CODE"
 
-      - name: Report build failure
+      - name: Full build error report
         if: steps.build_apk.outcome == 'failure'
         run: |
           echo "========================================"
@@ -104,23 +99,22 @@ jobs:
           echo "========================================"
           echo ""
 
-          echo "===== IMPORTANT ERRORS ====="
-
           if [ -f build.log ]; then
+            echo "===== IMPORTANT ERRORS ====="
             grep -n -E \
               'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED' \
               build.log | tail -n 100 || true
+
+            echo ""
+            echo "===== LAST 250 LINES ====="
+            tail -n 250 build.log
+
+            echo ""
+            echo "===== COMPLETE BUILD LOG ====="
+            cat build.log
           else
             echo "ERROR: build.log was not created."
-          fi
-
-          echo ""
-          echo "===== LAST 250 LINES ====="
-
-          if [ -f build.log ]; then
-            tail -n 250 build.log
-          else
-            echo "No build.log available."
+            echo "The Build APK step output above is the original build output."
           fi
 
           echo ""
@@ -132,29 +126,22 @@ jobs:
 
       - name: Find armeabi-v7a APK
         run: |
-          echo "========================================"
-          echo "       SEARCHING FOR APK FILES"
-          echo "========================================"
-
+          echo "===== GENERATED APK FILES ====="
           find . -type f -name '*.apk' -print
 
           APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo ""
             echo "ERROR: armeabi-v7a APK was not generated."
-            echo ""
-            echo "===== BUILD DIRECTORY ====="
+            echo "===== ALL BUILD FILES ====="
             find build -type f -print 2>/dev/null || true
             exit 1
           fi
 
           mkdir -p final-apk
 
-          cp "$APK" \
-            final-apk/app-armeabi-v7a-release.apk
+          cp "$APK" final-apk/app-armeabi-v7a-release.apk
 
-          echo ""
           echo "===== FINAL APK ====="
           ls -lh final-apk/app-armeabi-v7a-release.apk
 
@@ -162,9 +149,7 @@ jobs:
         run: |
           APK="final-apk/app-armeabi-v7a-release.apk"
 
-          echo "========================================"
-          echo "       VERIFYING APK SIGNATURE"
-          echo "========================================"
+          echo "===== VERIFYING APK SIGNATURE ====="
 
           jarsigner \
             -verify \
