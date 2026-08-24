@@ -26,7 +26,7 @@ jobs:
       - name: Dependencies
         run: flutter pub get
 
-      - name: Launcher icon
+      - name: Generate launcher icon
         run: dart run flutter_launcher_icons
 
       - name: Clean
@@ -37,6 +37,8 @@ jobs:
 
       - name: Create signing key
         run: |
+          set -e
+
           rm -f android/release-key.jks
           rm -f android/key.properties
 
@@ -52,14 +54,17 @@ jobs:
 
       - name: Verify signing key
         run: |
+          set -e
+
           keytool -list \
-            -v \
             -keystore android/release-key.jks \
             -storepass KyamusoniStore2026 \
             -alias kyamusoni
 
       - name: Create signing properties
         run: |
+          set -e
+
           printf '%s\n' \
             'storePassword=KyamusoniStore2026' \
             'keyPassword=KyamusoniStore2026' \
@@ -67,137 +72,195 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
-      - name: Build APK - FORCE ERROR OUTPUT
+          echo "===== key.properties ====="
+          cat android/key.properties
+
+      - name: Check Gradle wrapper
+        run: |
+          set -e
+
+          echo "===== ANDROID DIRECTORY ====="
+          ls -la android
+
+          echo ""
+          echo "===== GRADLE WRAPPER ====="
+
+          if [ ! -f android/gradlew ]; then
+            echo "ERROR: android/gradlew does not exist."
+            echo ""
+            echo "The Android Gradle wrapper is missing."
+            exit 1
+          fi
+
+          chmod +x android/gradlew
+
+          ls -lh android/gradlew
+
+      - name: Build APK with Gradle
         id: build_apk
         continue-on-error: true
         run: |
           set +e
 
           echo "========================================"
-          echo "       STARTING FLUTTER APK BUILD"
+          echo "       STARTING GRADLE BUILD"
           echo "========================================"
 
-          echo "::group::FULL FLUTTER BUILD"
+          cd android
 
-          flutter build apk \
-            --release \
-            --target-platform android-arm \
-            --split-per-abi \
-            --verbose 2>&1 | tee build.log
+          ./gradlew app:assembleRelease \
+            --stacktrace \
+            --warning-mode all \
+            --no-daemon \
+            2>&1 | tee ../gradle-build.log
 
           CODE=${PIPESTATUS[0]}
 
-          echo "::endgroup::"
+          cd ..
 
           echo ""
           echo "========================================"
-          echo "       BUILD EXIT CODE: $CODE"
+          echo "       GRADLE EXIT CODE: $CODE"
           echo "========================================"
 
           if [ "$CODE" -ne 0 ]; then
-            echo "::error title=Flutter APK Build Failed::Flutter exited with code $CODE"
+            echo ""
+            echo "========================================"
+            echo "       GRADLE BUILD FAILED"
+            echo "========================================"
+
+            if [ -f gradle-build.log ]; then
+              echo ""
+              echo "===== LAST 300 LINES ====="
+              tail -n 300 gradle-build.log
+            else
+              echo "ERROR: gradle-build.log was not created."
+            fi
 
             echo ""
-            echo "===== LAST 500 LINES ====="
-            tail -n 500 build.log || true
+            echo "========================================"
+            echo "       END GRADLE ERROR REPORT"
+            echo "========================================"
 
             exit "$CODE"
           fi
 
-      - name: FORCE ERROR REPORT
+          echo ""
+          echo "========================================"
+          echo "       GRADLE BUILD SUCCESSFUL"
+          echo "========================================"
+
+          echo ""
+          echo "===== SEARCHING FOR APK FILES ====="
+          find . -type f -name "*.apk" -print
+
+      - name: Report Gradle failure
         if: steps.build_apk.outcome == 'failure'
         run: |
           echo "========================================"
-          echo "       FORCED BUILD ERROR REPORT"
+          echo "       FINAL GRADLE ERROR REPORT"
           echo "========================================"
 
-          if [ -f build.log ]; then
-
+          if [ -f gradle-build.log ]; then
             echo ""
-            echo "===== FIRST IMPORTANT ERRORS ====="
-
-            grep -n -E \
-              'FAILURE:|What went wrong:|Execution failed for task|Caused by:|BUILD FAILED|KeytoolException|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
-              build.log | head -n 50 || true
-
-            echo ""
-            echo "===== GRADLE FAILURE CONTEXT ====="
-
-            awk '
-              /FAILURE:/ {show=1}
-              show {print}
-              show && /BUILD FAILED/ {exit}
-            ' build.log || true
-
-            echo ""
-            echo "===== LAST 500 LINES ====="
-            tail -n 500 build.log
-
-            echo ""
-            echo "===== WRITING ERROR TO GITHUB SUMMARY ====="
-
-            {
-              echo "## ❌ Kyamusoni APK Build Failed"
-              echo ""
-              echo "### Important errors"
-              echo '```text'
-
-              grep -n -E \
-                'FAILURE:|What went wrong:|Execution failed for task|Caused by:|BUILD FAILED|KeytoolException|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
-                build.log | head -n 100 || true
-
-              echo '```'
-              echo ""
-              echo "### Last 100 lines"
-              echo '```text'
-              tail -n 100 build.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-
+            echo "===== LAST 300 LINES ====="
+            tail -n 300 gradle-build.log
           else
-            echo "::error title=Missing build log::build.log was not created"
-            echo "ERROR: build.log was not created."
+            echo "ERROR: gradle-build.log was not created."
           fi
 
           echo ""
           echo "========================================"
-          echo "       END OF BUILD ERROR REPORT"
+          echo "       END ERROR REPORT"
           echo "========================================"
 
           exit 1
 
-      - name: Find armeabi-v7a APK
+      - name: Locate armeabi-v7a APK
         run: |
-          echo "===== GENERATED APK FILES ====="
-          find . -type f -name '*.apk' -print
+          set -e
 
-          APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
+          echo "========================================"
+          echo "       SEARCHING FOR GENERATED APK"
+          echo "========================================"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: armeabi-v7a APK was not generated."
-            echo "===== ALL BUILD FILES ====="
-            find build -type f -print 2>/dev/null || true
+          echo ""
+          echo "===== ALL APK FILES ====="
+          find . -type f -name "*.apk" -print
+
+          echo ""
+          echo "===== ARM APK FILES ====="
+
+          find . -type f -name "*.apk" \
+            \( -iname "*armeabi-v7a*" -o -iname "*armeabi_v7a*" \) \
+            -print
+
+          APK=$(find . -type f -name "*.apk" \
+            \( -iname "*armeabi-v7a*" -o -iname "*armeabi_v7a*" \) \
+            | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo ""
+            echo "ERROR: No armeabi-v7a APK was found."
+            echo ""
+            echo "===== COMPLETE APK SEARCH ====="
+            find . -type f -name "*.apk" -print
+            echo ""
+            echo "===== BUILD OUTPUT DIRECTORIES ====="
+            find android build -type d -name "*apk*" -print 2>/dev/null || true
             exit 1
           fi
+
+          echo ""
+          echo "FOUND:"
+          echo "$APK"
 
           mkdir -p final-apk
 
           cp "$APK" final-apk/app-armeabi-v7a-release.apk
 
+          echo ""
           echo "===== FINAL APK ====="
           ls -lh final-apk/app-armeabi-v7a-release.apk
 
       - name: Verify APK signature
         run: |
+          set -e
+
           APK="final-apk/app-armeabi-v7a-release.apk"
 
-          echo "===== VERIFYING APK SIGNATURE ====="
+          echo "========================================"
+          echo "       VERIFYING APK SIGNATURE"
+          echo "========================================"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: Final APK does not exist."
+            exit 1
+          fi
 
           jarsigner \
             -verify \
             -verbose \
             -certs \
             "$APK"
+
+      - name: Verify APK contents
+        run: |
+          set -e
+
+          APK="final-apk/app-armeabi-v7a-release.apk"
+
+          echo "========================================"
+          echo "       APK FINAL VERIFICATION"
+          echo "========================================"
+
+          ls -lh "$APK"
+
+          echo ""
+          echo "===== APK ZIP TEST ====="
+          unzip -t "$APK" >/dev/null
+
+          echo "APK archive is valid."
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
