@@ -50,6 +50,14 @@ jobs:
             -keypass KyamusoniStore2026 \
             -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
 
+      - name: Verify signing key
+        run: |
+          keytool -list \
+            -v \
+            -keystore android/release-key.jks \
+            -storepass KyamusoniStore2026 \
+            -alias kyamusoni
+
       - name: Signing properties
         run: |
           printf '%s\n' \
@@ -59,25 +67,85 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
+          echo "===== key.properties created ====="
+          cat android/key.properties | sed 's/Password=.*/Password=********/'
+
       - name: Build APK
+        id: build_apk
+        continue-on-error: true
         run: |
+          set -o pipefail
+
+          echo "========================================"
+          echo "           STARTING APK BUILD"
+          echo "========================================"
+
           flutter build apk \
             --release \
             --target-platform android-arm \
             --split-per-abi \
-            --verbose
+            --verbose 2>&1 | tee build.log
 
-      - name: Prepare APK
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+
+          echo ""
+          echo "========================================"
+          echo "       FLUTTER BUILD EXIT CODE"
+          echo "       $BUILD_EXIT_CODE"
+          echo "========================================"
+
+          exit "$BUILD_EXIT_CODE"
+
+      - name: Report build failure
+        if: steps.build_apk.outcome == 'failure'
         run: |
-          echo "===== GENERATED APK FILES ====="
-          find build -type f -name '*.apk' -print
+          echo "========================================"
+          echo "           APK BUILD FAILED"
+          echo "========================================"
+          echo ""
+
+          echo "===== IMPORTANT ERRORS ====="
+
+          if [ -f build.log ]; then
+            grep -n -E \
+              'FAILURE:|What went wrong:|Execution failed|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED' \
+              build.log | tail -n 100 || true
+          else
+            echo "ERROR: build.log was not created."
+          fi
+
+          echo ""
+          echo "===== LAST 250 LINES ====="
+
+          if [ -f build.log ]; then
+            tail -n 250 build.log
+          else
+            echo "No build.log available."
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "       END OF BUILD ERROR REPORT"
+          echo "========================================"
+
+          exit 1
+
+      - name: Find armeabi-v7a APK
+        run: |
+          echo "========================================"
+          echo "       SEARCHING FOR APK FILES"
+          echo "========================================"
+
+          find . -type f -name '*.apk' -print
 
           APK="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
 
           if [ ! -f "$APK" ]; then
+            echo ""
             echo "ERROR: armeabi-v7a APK was not generated."
-            echo "===== ALL APK FILES ====="
-            find . -type f -name '*.apk' -print
+            echo ""
+            echo "===== BUILD DIRECTORY ====="
+            find build -type f -print 2>/dev/null || true
             exit 1
           fi
 
@@ -86,21 +154,27 @@ jobs:
           cp "$APK" \
             final-apk/app-armeabi-v7a-release.apk
 
+          echo ""
           echo "===== FINAL APK ====="
           ls -lh final-apk/app-armeabi-v7a-release.apk
 
-      - name: Verify signature
+      - name: Verify APK signature
         run: |
-          echo "===== VERIFYING APK SIGNATURE ====="
+          APK="final-apk/app-armeabi-v7a-release.apk"
 
-          jarsigner -verify \
+          echo "========================================"
+          echo "       VERIFYING APK SIGNATURE"
+          echo "========================================"
+
+          jarsigner \
+            -verify \
             -verbose \
             -certs \
-            final-apk/app-armeabi-v7a-release.apk
+            "$APK"
 
-      - name: Upload APK
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
           name: kyamusoni-armeabi-v7a-release
           path: final-apk/app-armeabi-v7a-release.apk
-          if-no-files-found: error       
+          if-no-files-found: error
