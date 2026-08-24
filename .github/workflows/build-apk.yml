@@ -72,23 +72,48 @@ jobs:
             'storeFile=release-key.jks' \
             > android/key.properties
 
-          echo "===== key.properties ====="
-          cat android/key.properties
+      - name: Generate Gradle wrapper
+        run: |
+          set +e
+
+          echo "========================================"
+          echo "       GENERATING GRADLE WRAPPER"
+          echo "========================================"
+
+          cd android
+
+          gradle wrapper --gradle-version 8.14 \
+            2>&1 | tee ../wrapper-build.log
+
+          CODE=${PIPESTATUS[0]}
+
+          cd ..
+
+          if [ "$CODE" -ne 0 ]; then
+            echo ""
+            echo "===== GRADLE WRAPPER GENERATION FAILED ====="
+            echo ""
+            if [ -f wrapper-build.log ]; then
+              tail -n 200 wrapper-build.log
+            fi
+            exit "$CODE"
+          fi
+
+          chmod +x android/gradlew
+
+          echo ""
+          echo "===== GRADLE WRAPPER CREATED ====="
+          ls -lh android/gradlew
+          ls -lh android/gradle/wrapper/
 
       - name: Check Gradle wrapper
         run: |
           set -e
 
-          echo "===== ANDROID DIRECTORY ====="
-          ls -la android
-
-          echo ""
           echo "===== GRADLE WRAPPER ====="
 
           if [ ! -f android/gradlew ]; then
             echo "ERROR: android/gradlew does not exist."
-            echo ""
-            echo "The Android Gradle wrapper is missing."
             exit 1
           fi
 
@@ -188,13 +213,6 @@ jobs:
           echo "===== ALL APK FILES ====="
           find . -type f -name "*.apk" -print
 
-          echo ""
-          echo "===== ARM APK FILES ====="
-
-          find . -type f -name "*.apk" \
-            \( -iname "*armeabi-v7a*" -o -iname "*armeabi_v7a*" \) \
-            -print
-
           APK=$(find . -type f -name "*.apk" \
             \( -iname "*armeabi-v7a*" -o -iname "*armeabi_v7a*" \) \
             | head -n 1)
@@ -205,9 +223,6 @@ jobs:
             echo ""
             echo "===== COMPLETE APK SEARCH ====="
             find . -type f -name "*.apk" -print
-            echo ""
-            echo "===== BUILD OUTPUT DIRECTORIES ====="
-            find android build -type d -name "*apk*" -print 2>/dev/null || true
             exit 1
           fi
 
@@ -233,11 +248,6 @@ jobs:
           echo "       VERIFYING APK SIGNATURE"
           echo "========================================"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: Final APK does not exist."
-            exit 1
-          fi
-
           jarsigner \
             -verify \
             -verbose \
@@ -256,8 +266,6 @@ jobs:
 
           ls -lh "$APK"
 
-          echo ""
-          echo "===== APK ZIP TEST ====="
           unzip -t "$APK" >/dev/null
 
           echo "APK archive is valid."
