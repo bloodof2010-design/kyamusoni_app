@@ -13,20 +13,27 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Create local.properties
+        run: |
+          flutter pub get
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          echo "flutter.sdk=$FLUTTER_ROOT" >> android/local.properties
+          cat android/local.properties
+
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.13
-          
+
       - name: Fix wrapper
         run: |
           cd android
           rm -f gradle/wrapper/gradle-wrapper.jar
           gradle wrapper --gradle-version 8.13 --distribution-type all
-          
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
           
       - name: Build APK
         run: flutter build apk --release
