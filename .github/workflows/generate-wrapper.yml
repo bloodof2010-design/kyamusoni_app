@@ -17,75 +17,68 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Gradle 8.13
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '8.13'
-
-      - name: Create temporary Gradle project
+      - name: Download Gradle 8.13
         run: |
-          mkdir -p wrapper-project
-          cd wrapper-project
+          wget -q https://services.gradle.org/distributions/gradle-8.13-bin.zip
+          unzip -q gradle-8.13-bin.zip
+          echo "$PWD/gradle-8.13/bin" >> "$GITHUB_PATH"
+
+      - name: Create clean Gradle project
+        run: |
+          rm -rf /tmp/wrapper-project
+          mkdir -p /tmp/wrapper-project
+          cd /tmp/wrapper-project
 
           printf '%s\n' \
-            'plugins {' \
-            '}' \
+            'rootProject.name = "wrapper-project"' \
+            > settings.gradle
+
+          printf '%s\n' \
+            'tasks.register("dummy")' \
             > build.gradle
 
-          gradle wrapper \
-            --gradle-version 8.13 \
-            --distribution-type bin
+      - name: Generate Gradle 8.13 wrapper
+        run: |
+          cd /tmp/wrapper-project
+          gradle wrapper --gradle-version 8.13 --distribution-type bin
 
-      - name: Copy wrapper files
+      - name: Verify generated files
         run: |
           set -e
 
-          mkdir -p android/gradle/wrapper
+          echo "===== GENERATED FILES ====="
 
-          cp wrapper-project/gradlew android/gradlew
-          cp wrapper-project/gradlew.bat android/gradlew.bat
-          cp wrapper-project/gradle/wrapper/gradle-wrapper.jar \
-            android/gradle/wrapper/gradle-wrapper.jar
-
-          chmod +x android/gradlew
-
-          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
-          networkTimeout=10000
-          validateDistributionUrl=true
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-
-      - name: Verify wrapper
-        run: |
-          set -e
-
-          echo "===== WRAPPER FILES ====="
           ls -lh \
-            android/gradlew \
-            android/gradlew.bat \
-            android/gradle/wrapper/gradle-wrapper.jar \
-            android/gradle/wrapper/gradle-wrapper.properties
-
-          echo ""
-          echo "===== JAR CHECKSUM ====="
-          sha256sum android/gradle/wrapper/gradle-wrapper.jar
+            /tmp/wrapper-project/gradlew \
+            /tmp/wrapper-project/gradlew.bat \
+            /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.jar \
+            /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.properties
 
           echo ""
           echo "===== WRAPPER VERSION ====="
-          cd android
+
+          cd /tmp/wrapper-project
           ./gradlew --version
 
-      - name: Upload wrapper files
+      - name: Package wrapper
+        run: |
+          mkdir -p wrapper-output/gradle/wrapper
+
+          cp /tmp/wrapper-project/gradlew \
+            wrapper-output/gradlew
+
+          cp /tmp/wrapper-project/gradlew.bat \
+            wrapper-output/gradlew.bat
+
+          cp /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.jar \
+            wrapper-output/gradle/wrapper/gradle-wrapper.jar
+
+          cp /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.properties \
+            wrapper-output/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Upload wrapper
         uses: actions/upload-artifact@v4
         with:
           name: gradle-8.13-wrapper
-          path: |
-            android/gradlew
-            android/gradlew.bat
-            android/gradle/wrapper/gradle-wrapper.jar
-            android/gradle/wrapper/gradle-wrapper.properties
+          path: wrapper-output
           if-no-files-found: error
