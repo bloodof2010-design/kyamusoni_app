@@ -27,13 +27,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.13
+          gradle-version: 8.14
 
       - name: Fix wrapper
         run: |
           cd android
           rm -f gradle/wrapper/gradle-wrapper.jar
-          gradle wrapper --gradle-version 8.13 --distribution-type all
+          gradle wrapper --gradle-version 8.14 --distribution-type all
           
       - name: Build APK
         run: flutter build apk --release
