@@ -1,4 +1,4 @@
-name: Generate Gradle 8.13 Wrapper
+name: Generate Gradle-8.13 Wrapper
 
 on:
   workflow_dispatch:
@@ -8,25 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - name: Download Gradle 8.13
         run: |
+          set -e
+
           wget -q https://services.gradle.org/distributions/gradle-8.13-bin.zip
           unzip -q gradle-8.13-bin.zip
-          echo "$PWD/gradle-8.13/bin" >> "$GITHUB_PATH"
+
+          echo "$GITHUB_WORKSPACE/gradle-8.13/bin" >> "$GITHUB_PATH"
 
       - name: Create clean Gradle project
         run: |
+          set -e
+
           rm -rf /tmp/wrapper-project
           mkdir -p /tmp/wrapper-project
+
           cd /tmp/wrapper-project
 
           printf '%s\n' \
@@ -39,14 +36,21 @@ jobs:
 
       - name: Generate Gradle 8.13 wrapper
         run: |
-          cd /tmp/wrapper-project
-          gradle wrapper --gradle-version 8.13 --distribution-type bin
+          set -e
 
-      - name: Verify generated files
+          cd /tmp/wrapper-project
+
+          gradle wrapper \
+            --gradle-version 8.13 \
+            --distribution-type bin
+
+      - name: Verify wrapper
         run: |
           set -e
 
-          echo "===== GENERATED FILES ====="
+          echo "========================================"
+          echo "       WRAPPER VERIFICATION"
+          echo "========================================"
 
           ls -lh \
             /tmp/wrapper-project/gradlew \
@@ -55,13 +59,17 @@ jobs:
             /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.properties
 
           echo ""
-          echo "===== WRAPPER VERSION ====="
+          echo "===== GRADLE VERSION ====="
 
           cd /tmp/wrapper-project
           ./gradlew --version
 
       - name: Package wrapper
         run: |
+          set -e
+
+          rm -rf wrapper-output
+
           mkdir -p wrapper-output/gradle/wrapper
 
           cp /tmp/wrapper-project/gradlew \
@@ -76,9 +84,23 @@ jobs:
           cp /tmp/wrapper-project/gradle/wrapper/gradle-wrapper.properties \
             wrapper-output/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Upload wrapper
+      - name: Verify artifact files
+        run: |
+          set -e
+
+          echo "===== FINAL WRAPPER ====="
+
+          find wrapper-output -type f -print
+
+          echo ""
+          echo "===== JAR CHECKSUM ====="
+
+          sha256sum \
+            wrapper-output/gradle/wrapper/gradle-wrapper.jar
+
+      - name: Upload Gradle 8.13 wrapper
         uses: actions/upload-artifact@v4
         with:
           name: gradle-8.13-wrapper
-          path: wrapper-output
+          path: wrapper-output/
           if-no-files-found: error
