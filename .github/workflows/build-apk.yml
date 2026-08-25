@@ -1,273 +1,38 @@
 name: Build APK
-
 on:
   push:
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
-
-      - name: Flutter
-        uses: subosito/flutter-action@v2
+          
+      - uses: gradle/actions/setup-gradle@v3
         with:
-          channel: stable
-
-      - name: Dependencies
-        run: flutter pub get
-
-      - name: Generate launcher icon
-        run: dart run flutter_launcher_icons
-
-      - name: Clean
-        run: flutter clean
-
-      - name: Dependencies again
-        run: flutter pub get
-
-      - name: Create signing key
+          gradle-version: 8.13
+          
+      - name: Fix wrapper
         run: |
-          set -e
-
-          rm -f android/release-key.jks
-          rm -f android/key.properties
-
-          keytool -genkeypair -v \
-            -keystore android/release-key.jks \
-            -alias kyamusoni \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass KyamusoniStore2026 \
-            -keypass KyamusoniStore2026 \
-            -dname "CN=Kyamusoni, OU=Mobile, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
-
-      - name: Verify signing key
-        run: |
-          set -e
-
-          keytool -list \
-            -keystore android/release-key.jks \
-            -storepass KyamusoniStore2026 \
-            -alias kyamusoni
-
-      - name: Create signing properties
-        run: |
-          set -e
-
-          printf '%s\n' \
-            'storePassword=KyamusoniStore2026' \
-            'keyPassword=KyamusoniStore2026' \
-            'keyAlias=kyamusoni' \
-            'storeFile=release-key.jks' \
-            > android/key.properties
-
-      - name: Verify Gradle wrapper
-        id: verify_gradle
-        continue-on-error: true
-        run: |
-          set +e
-
-          echo "========================================"
-          echo "       VERIFYING PROJECT GRADLE"
-          echo "========================================"
-
-          if [ ! -f android/gradlew ]; then
-            echo "ERROR: android/gradlew does not exist."
-            exit 1
-          fi
-
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "ERROR: gradle-wrapper.jar does not exist."
-            exit 1
-          fi
-
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            echo "ERROR: gradle-wrapper.properties does not exist."
-            exit 1
-          fi
-
-          echo ""
-          echo "===== WRAPPER CONFIGURATION ====="
-          grep -n "distributionUrl" \
-            android/gradle/wrapper/gradle-wrapper.properties
-
-          chmod +x android/gradlew
-
-          echo ""
-          echo "===== ACTUAL GRADLE VERSION ====="
-
           cd android
-          ./gradlew --version
-          CODE=$?
-          cd ..
-
-          echo ""
-          echo "Gradle wrapper exit code: $CODE"
-
-          if [ "$CODE" -ne 0 ]; then
-            echo "ERROR: Gradle wrapper failed."
-            exit "$CODE"
-          fi
-
-      - name: Stop if wrong Gradle version
-        if: steps.verify_gradle.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       GRADLE WRAPPER VERIFICATION FAILED"
-          echo "========================================"
-          echo ""
-          echo "The project Gradle wrapper is invalid or unavailable."
-          echo "Expected Gradle version: 8.13"
-          echo ""
-          echo "===== WRAPPER FILES ====="
-          find android/gradle -maxdepth 3 -type f -print 2>/dev/null || true
-          exit 1
-
-      - name: Build signed armeabi-v7a APK
-        id: build_apk
-        continue-on-error: true
-        run: |
-          set +e
-
-          echo "========================================"
-          echo "       BUILDING SIGNED APK"
-          echo "========================================"
-
-          cd android
-
-          ./gradlew app:assembleRelease \
-            --stacktrace \
-            --warning-mode all \
-            --no-daemon \
-            2>&1 | tee ../gradle-build.log
-
-          CODE=${PIPESTATUS[0]}
-
-          cd ..
-
-          echo ""
-          echo "========================================"
-          echo "       GRADLE EXIT CODE: $CODE"
-          echo "========================================"
-
-          if [ "$CODE" -ne 0 ]; then
-            echo ""
-            echo "===== IMPORTANT ERRORS ====="
-
-            if [ -f gradle-build.log ]; then
-              grep -n -E \
-                'FAILURE:|What went wrong:|Execution failed for task|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
-                gradle-build.log | tail -n 100 || true
-
-              echo ""
-              echo "===== LAST 300 LINES ====="
-              tail -n 300 gradle-build.log
-            else
-              echo "ERROR: gradle-build.log was not created."
-            fi
-
-            exit "$CODE"
-          fi
-
-          echo ""
-          echo "===== GRADLE BUILD SUCCESSFUL ====="
-          find . -type f -name "*.apk" -print
-
-      - name: Report build failure
-        if: steps.build_apk.outcome == 'failure'
-        run: |
-          echo "========================================"
-          echo "       FINAL BUILD ERROR REPORT"
-          echo "========================================"
-
-          if [ -f gradle-build.log ]; then
-            echo ""
-            echo "===== IMPORTANT ERRORS ====="
-            grep -n -E \
-              'FAILURE:|What went wrong:|Execution failed for task|Caused by:|KeytoolException|Given final block|BUILD FAILED|Could not|Error:|Exception:|A problem occurred|Task .* FAILED|ERROR:' \
-              gradle-build.log | tail -n 100 || true
-
-            echo ""
-            echo "===== LAST 300 LINES ====="
-            tail -n 300 gradle-build.log
-          else
-            echo "ERROR: gradle-build.log was not created."
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "       END OF BUILD ERROR REPORT"
-          echo "========================================"
-
-          exit 1
-
-      - name: Locate APK
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "       SEARCHING FOR APK FILES"
-          echo "========================================"
-
-          find . -type f -name "*.apk" -print
-
-          APK=$(find . -type f -name "*.apk" \
-            \( -iname "*armeabi-v7a*" -o -iname "*armeabi_v7a*" \) \
-            | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: No armeabi-v7a APK found."
-            echo ""
-            echo "===== BUILD OUTPUT DIRECTORIES ====="
-            find build android/build -type f 2>/dev/null | head -n 300 || true
-            exit 1
-          fi
-
-          echo "FOUND: $APK"
-
-          mkdir -p final-apk
-
-          cp "$APK" final-apk/app-armeabi-v7a-release.apk
-
-          ls -lh final-apk/app-armeabi-v7a-release.apk
-
-      - name: Verify APK signature
-        run: |
-          set -e
-
-          APK="final-apk/app-armeabi-v7a-release.apk"
-
-          echo "========================================"
-          echo "       VERIFYING APK SIGNATURE"
-          echo "========================================"
-
-          jarsigner -verify -verbose -certs "$APK"
-
-      - name: Verify APK contents
-        run: |
-          set -e
-
-          APK="final-apk/app-armeabi-v7a-release.apk"
-
-          unzip -t "$APK" >/dev/null
-
-          echo "APK archive is valid."
-          ls -lh "$APK"
-
-      - name: Upload signed APK
+          rm -f gradle/wrapper/gradle-wrapper.jar
+          gradle wrapper --gradle-version 8.13 --distribution-type all
+          
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          
+      - name: Build APK
+        run: flutter build apk --release
+        
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: kyamusoni-armeabi-v7a-release
-          path: final-apk/app-armeabi-v7a-release.apk
-          if-no-files-found: error
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
