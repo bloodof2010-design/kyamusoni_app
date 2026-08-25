@@ -1,4 +1,4 @@
-name: Generate Gradle-8.13 Wrapper
+name: Generate Gradle 8.13 Wrapper
 
 on:
   workflow_dispatch:
