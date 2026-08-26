@@ -9,6 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - run: |
+          pwd
+          ls -la
+          ls -la android/ || echo "no android at root"
+          ls -la kyamusoni_app/android/ || echo "no nested android"
+          find . -name "settings.gradle" -type f
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -18,24 +25,23 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Fix local.properties
-        run: |
-          echo "Checking flutter..."
+      - run: |
           which flutter
           FLUTTER_SDK=$(dirname $(dirname $(which flutter)))
-          echo "Flutter SDK is at $FLUTTER_SDK"
+          echo "Creating file at $(pwd)/android/local.properties"
+          mkdir -p android
           echo "flutter.sdk=$FLUTTER_SDK" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
           echo "flutter.versionCode=1" >> android/local.properties
-          echo "flutter.versionName=1.0.0" >> android/local.properties
+          echo "flutter.versionName=1.0" >> android/local.properties
           cat android/local.properties
-          ls -l android/
-
-      - name: Build APK
-        run: flutter build apk --release
+          # also create nested if needed
+          mkdir -p kyamusoni_app/android || true
+          cp android/local.properties kyamusoni_app/android/ 2>/dev/null || true
           
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - run: flutter build apk --release
+          
+      - uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: "**/app-release.apk"
