@@ -1,4 +1,5 @@
 name: Build APK
+
 on:
   push:
     branches: [ main ]
@@ -8,13 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - run: |
-          pwd
-          ls -la
-          ls -la android/ || echo "no android at root"
-          ls -la kyamusoni_app/android/ || echo "no nested android"
-          find . -name "settings.gradle" -type f
 
       - uses: actions/setup-java@v4
         with:
@@ -25,23 +19,30 @@ jobs:
         with:
           channel: 'stable'
 
-      - run: |
-          which flutter
-          FLUTTER_SDK=$(dirname $(dirname $(which flutter)))
-          echo "Creating file at $(pwd)/android/local.properties"
+      - name: Force fix gradle.properties
+        run: |
+          rm -rf ~/.gradle
+          rm -rf android/.gradle
+          rm -rf gradle.properties
           mkdir -p android
-          echo "flutter.sdk=$FLUTTER_SDK" > android/local.properties
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4G
+          android.useAndroidX=true
+          android.enableRtl=true
+          EOF
+          echo "FIXED FILE:"
+          cat android/gradle.properties
+          
+          # also fix local.properties for old error
+          echo "flutter.sdk=$(dirname $(dirname $(which flutter)))" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
           echo "flutter.versionCode=1" >> android/local.properties
           echo "flutter.versionName=1.0" >> android/local.properties
-          cat android/local.properties
-          # also create nested if needed
-          mkdir -p kyamusoni_app/android || true
-          cp android/local.properties kyamusoni_app/android/ 2>/dev/null || true
-          
-      - run: flutter build apk --release
-          
+
+      - run: flutter clean
+      - run: flutter build apk --release --no-tree-shake-icons
+
       - uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: "**/app-release.apk"
+          name: app-release-old-phone
+          path: build/app/outputs/flutter-apk/app-release.apk
