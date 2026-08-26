@@ -9,6 +9,6 @@ if not exist "%CLASSPATH%" (
     exit /b 1
 )
 
-java -Xmx64m -Xms64m -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
+java -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
 
 endlocal
