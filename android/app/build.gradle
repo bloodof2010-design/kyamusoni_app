@@ -4,18 +4,28 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-def keystoreProperties = new Properties()
-def keystorePropertiesFile = rootProject.file("key.properties")
-
-if (keystorePropertiesFile.exists()) {
-    keystorePropertiesFile.withInputStream { stream ->
-        keystoreProperties.load(stream)
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
     }
 }
 
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
+
 android {
-    namespace "com.example.kyamusoni_app"
+    namespace "com.kyamusoni.app"
     compileSdk 35
+    ndkVersion "27.0.12077973"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -23,41 +33,24 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = '17'
     }
 
     defaultConfig {
-        applicationId "com.example.kyamusoni_app"
+        applicationId "com.kyamusoni.app"
         minSdk 21
         targetSdk 35
-        versionCode flutter.versionCode
-        versionName flutter.versionName
-    }
-
-    signingConfigs {
-        release {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias keystoreProperties["keyAlias"]
-                keyPassword keystoreProperties["keyPassword"]
-                storePassword keystoreProperties["storePassword"]
-
-                def storeFileValue = keystoreProperties["storeFile"]
-                if (storeFileValue != null) {
-                    storeFile rootProject.file(storeFileValue)
-                }
-            }
-        }
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
     }
 
     buildTypes {
-    release {
-        signingConfig signingConfigs.debug
-    }
-    }
+        release {
+            signingConfig signingConfigs.debug
         }
     }
 }
 
 flutter {
-    source "../.."
+    source '../..'
 }
