@@ -3,46 +3,80 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
 
-      - name: Force fix gradle.properties
+      - name: Configure Android files
         run: |
-          rm -rf ~/.gradle
-          rm -rf android/.gradle
-          rm -rf gradle.properties
-          mkdir -p android
-          cat > android/gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx4G
+          set -e
+
+          cat > android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
           android.useAndroidX=true
           android.enableRtl=true
           EOF
-          echo "FIXED FILE:"
+
+          cat > android/local.properties <<EOF
+          flutter.sdk=$FLUTTER_ROOT
+          sdk.dir=$ANDROID_HOME
+          flutter.versionCode=1
+          flutter.versionName=1.0
+          EOF
+
+          echo "===== gradle.properties ====="
           cat android/gradle.properties
-          
-          # also fix local.properties for old error
-          echo "flutter.sdk=$(dirname $(dirname $(which flutter)))" > android/local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
-          echo "flutter.versionCode=1" >> android/local.properties
-          echo "flutter.versionName=1.0" >> android/local.properties
 
-      - run: flutter clean
-      - run: flutter build apk --release --no-tree-shake-icons
+          echo "===== local.properties ====="
+          cat android/local.properties
 
-      - uses: actions/upload-artifact@v4
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Clean Flutter
+        run: flutter clean
+
+      - name: Get dependencies again
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Verify APK
+        run: |
+          set -e
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not generated."
+            find build -type f -name "*.apk" -print || true
+            exit 1
+          fi
+
+          echo "===== APK GENERATED ====="
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: app-release-old-phone
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
