@@ -9,7 +9,7 @@ if [ ! -f "$CLASSPATH" ]; then
     exit 1
 fi
 
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+DEFAULT_JVM_OPTS="-Xmx64m -Xms64m"
 
 set -- \
     "$@" \
