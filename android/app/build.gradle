@@ -37,11 +37,11 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.kyamusoni.app"
-        minSdk 21
-        targetSdk 35
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+    applicationId "com.example.kyamusoni_app"
+    minSdk 23
+    targetSdk 35
+    versionCode flutter.versionCode
+    versionName flutter.versionName
     }
 
     buildTypes {
