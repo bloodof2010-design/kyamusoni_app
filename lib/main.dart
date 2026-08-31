@@ -14,8 +14,8 @@ class KyamusoniApp extends StatelessWidget {
       title: 'Kyamusoni App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.green,
+        useMaterial3: false, // FIXED for Android 5
+        primarySwatch: Colors.green,
       ),
       home: const HomeScreen(),
     );
@@ -40,10 +40,7 @@ class HomeScreen extends StatelessWidget {
               const Text(
                 'Welcome to Kyamusoni App',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -52,12 +49,10 @@ class HomeScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 17),
               ),
               const SizedBox(height: 32),
-              FilledButton.icon(
+              ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const TasteScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const TasteScreen()),
                   );
                 },
                 icon: const Icon(Icons.restaurant_menu),
