@@ -23,7 +23,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.kyamusoni.app"
+    namespace "com.example.kyamusoni_app"
     compileSdk 35
     ndkVersion "27.0.12077973"
 
@@ -37,11 +37,11 @@ android {
     }
 
     defaultConfig {
-    applicationId "com.example.kyamusoni_app"
-    minSdk 23
-    targetSdk 35
-    versionCode flutter.versionCode
-    versionName flutter.versionName
+        applicationId "com.example.kyamusoni_app"
+        minSdk 23
+        targetSdk 35
+        versionCode flutter.versionCode
+        versionName flutter.versionName
     }
 
     buildTypes {
