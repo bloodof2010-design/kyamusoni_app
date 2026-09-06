@@ -1,24 +1,79 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CocoaItem {
+  String farmName;
   String name;
   String description;
-  int quantity;
+  double quantity;
+  String unit;
   DateTime plantedDate;
   String maturityPeriod;
 
   CocoaItem({
+    required this.farmName,
     required this.name,
     required this.description,
     required this.quantity,
+    required this.unit,
     required this.plantedDate,
     required this.maturityPeriod,
   });
 
-  DateTime get expectedHarvestDate =>
-      calculateCocoaHarvestDate(plantedDate, maturityPeriod);
+  DateTime get harvestDate {
+    switch (maturityPeriod) {
+      case '30 days':
+        return plantedDate.add(const Duration(days: 30));
+      case '60 days':
+        return plantedDate.add(const Duration(days: 60));
+      case '90 days':
+        return plantedDate.add(const Duration(days: 90));
+      case '6 months':
+        return DateTime(
+          plantedDate.year,
+          plantedDate.month + 6,
+          plantedDate.day,
+        );
+      case '9 months':
+        return DateTime(
+          plantedDate.year,
+          plantedDate.month + 9,
+          plantedDate.day,
+        );
+      case '12 months':
+        return DateTime(
+          plantedDate.year + 1,
+          plantedDate.month,
+          plantedDate.day,
+        );
+      default:
+        return plantedDate;
+    }
+  }
 
-  bool get isReady => !DateTime.now().isBefore(expectedHarvestDate);
+  Map<String, dynamic> toJson() => {
+        'farmName': farmName,
+        'name': name,
+        'description': description,
+        'quantity': quantity,
+        'unit': unit,
+        'plantedDate': plantedDate.toIso8601String(),
+        'maturityPeriod': maturityPeriod,
+      };
+
+  factory CocoaItem.fromJson(Map<String, dynamic> json) {
+    return CocoaItem(
+      farmName: json['farmName'] ?? '',
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      quantity: (json['quantity'] as num).toDouble(),
+      unit: json['unit'] ?? 'kg',
+      plantedDate: DateTime.parse(json['plantedDate']),
+      maturityPeriod: json['maturityPeriod'] ?? '90 days',
+    );
+  }
 }
 
 class CocoaScreen extends StatefulWidget {
@@ -29,7 +84,16 @@ class CocoaScreen extends StatefulWidget {
 }
 
 class _CocoaScreenState extends State<CocoaScreen> {
+  static const String storageKey = 'kyamusoni_cocoa_items';
+
   final List<CocoaItem> _items = [];
+
+  static const units = [
+    'kg',
+    'bags',
+    'acres',
+    'pieces',
+  ];
 
   static const maturityOptions = [
     '30 days',
@@ -40,20 +104,74 @@ class _CocoaScreenState extends State<CocoaScreen> {
     '12 months',
   ];
 
-  int _daysLeft(CocoaItem item) {
+  @override
+  void initState() {
+    super.initState();
+    loadItems();
+  }
+
+  Future<void> loadItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(storageKey);
+
+    if (saved == null) return;
+
+    try {
+      final List<dynamic> decoded = jsonDecode(saved);
+
+      setState(() {
+        _items.clear();
+        _items.addAll(
+          decoded.map(
+            (item) => CocoaItem.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          ),
+        );
+      });
+    } catch (_) {}
+  }
+
+  Future<void> saveItems() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString(
+      storageKey,
+      jsonEncode(
+        _items.map((item) => item.toJson()).toList(),
+      ),
+    );
+  }
+
+  String formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  int daysLeft(CocoaItem item) {
     final days =
-        item.expectedHarvestDate.difference(DateTime.now()).inDays;
+        item.harvestDate.difference(DateTime.now()).inDays;
+
     return days < 0 ? 0 : days;
   }
 
   void _showForm({CocoaItem? item}) {
-    final name = TextEditingController(text: item?.name ?? '');
-    final description =
-        TextEditingController(text: item?.description ?? '');
-    final quantity =
-        TextEditingController(text: item?.quantity.toString() ?? '');
+    final farm = TextEditingController(
+      text: item?.farmName ?? '',
+    );
+    final name = TextEditingController(
+      text: item?.name ?? '',
+    );
+    final description = TextEditingController(
+      text: item?.description ?? '',
+    );
+    final quantity = TextEditingController(
+      text: item?.quantity.toString() ?? '',
+    );
 
-    DateTime planted = item?.plantedDate ?? DateTime.now();
+    DateTime planted =
+        item?.plantedDate ?? DateTime.now();
+
+    String unit = item?.unit ?? 'kg';
     String? maturity = item?.maturityPeriod;
 
     showDialog(
@@ -61,37 +179,82 @@ class _CocoaScreenState extends State<CocoaScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            DateTime? harvest = maturity == null
-                ? null
-                : calculateCocoaHarvestDate(planted, maturity!);
+            DateTime? harvest;
+
+            if (maturity != null) {
+              final temp = CocoaItem(
+                farmName: '',
+                name: '',
+                description: '',
+                quantity: 0,
+                unit: unit,
+                plantedDate: planted,
+                maturityPeriod: maturity!,
+              );
+
+              harvest = temp.harvestDate;
+            }
 
             return AlertDialog(
-              title: Text(item == null ? 'Add Cocoa Item' : 'Edit Cocoa Item'),
+              title: Text(
+                item == null ? 'Add Cocoa' : 'Edit Cocoa',
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
+                      controller: farm,
+                      decoration: const InputDecoration(
+                        labelText: 'Farm Name',
+                      ),
+                    ),
+                    TextField(
                       controller: name,
-                      decoration: const InputDecoration(labelText: 'Name'),
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                      ),
                     ),
                     TextField(
                       controller: description,
                       maxLines: 2,
-                      decoration:
-                          const InputDecoration(labelText: 'Description'),
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                      ),
                     ),
                     TextField(
                       controller: quantity,
-                      keyboardType: TextInputType.number,
-                      decoration:
-                          const InputDecoration(labelText: 'Quantity'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Quantity',
+                      ),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: unit,
+                      decoration: const InputDecoration(
+                        labelText: 'Unit',
+                      ),
+                      items: units.map((value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => unit = value);
+                        }
+                      },
                     ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Planted Date'),
-                      subtitle: Text(
-                        '${planted.day}/${planted.month}/${planted.year}',
+                      subtitle: Text(formatDate(planted)),
+                      trailing: const Icon(
+                        Icons.calendar_today,
                       ),
                       onTap: () async {
                         final date = await showDatePicker(
@@ -123,12 +286,14 @@ class _CocoaScreenState extends State<CocoaScreen> {
                     ),
                     if (harvest != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 10),
+                        padding: const EdgeInsets.only(top: 12),
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Expected Harvest: '
-                            '${harvest.day}/${harvest.month}/${harvest.year}',
+                            'Harvest Date: ${formatDate(harvest!)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -137,51 +302,63 @@ class _CocoaScreenState extends State<CocoaScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
+                  onPressed: () =>
+                      Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    final parsedQuantity =
-                        int.tryParse(quantity.text.trim());
+                  onPressed: () async {
+                    final parsed =
+                        double.tryParse(quantity.text.trim());
 
-                    if (name.text.trim().isEmpty ||
-                        parsedQuantity == null ||
-                        parsedQuantity < 0 ||
+                    if (farm.text.trim().isEmpty ||
+                        name.text.trim().isEmpty ||
+                        parsed == null ||
+                        parsed < 0 ||
                         maturity == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Name, valid Quantity and Maturity Period are required.',
+                            'Farm Name, Name, Quantity and Maturity Period are required.',
                           ),
                         ),
                       );
                       return;
                     }
 
-                    setState(() {
-                      if (item == null) {
-                        _items.add(
-                          CocoaItem(
-                            name: name.text.trim(),
-                            description: description.text.trim(),
-                            quantity: parsedQuantity,
-                            plantedDate: planted,
-                            maturityPeriod: maturity!,
-                          ),
-                        );
-                      } else {
-                        item.name = name.text.trim();
-                        item.description = description.text.trim();
-                        item.quantity = parsedQuantity;
-                        item.plantedDate = planted;
-                        item.maturityPeriod = maturity!;
-                      }
-                    });
+                    if (item == null) {
+                      _items.add(
+                        CocoaItem(
+                          farmName: farm.text.trim(),
+                          name: name.text.trim(),
+                          description: description.text.trim(),
+                          quantity: parsed,
+                          unit: unit,
+                          plantedDate: planted,
+                          maturityPeriod: maturity!,
+                        ),
+                      );
+                    } else {
+                      item.farmName = farm.text.trim();
+                      item.name = name.text.trim();
+                      item.description =
+                          description.text.trim();
+                      item.quantity = parsed;
+                      item.unit = unit;
+                      item.plantedDate = planted;
+                      item.maturityPeriod = maturity!;
+                    }
 
+                    await saveItems();
+
+                    if (!mounted) return;
+
+                    setState(() {});
                     Navigator.pop(dialogContext);
                   },
-                  child: Text(item == null ? 'Add' : 'Save'),
+                  child: Text(
+                    item == null ? 'Add' : 'Save',
+                  ),
                 ),
               ],
             );
@@ -191,30 +368,47 @@ class _CocoaScreenState extends State<CocoaScreen> {
     );
   }
 
+  Future<void> _deleteItem(int index) async {
+    setState(() => _items.removeAt(index));
+    await saveItems();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cocoa')),
+      appBar: AppBar(
+        title: const Text('Cocoa'),
+      ),
       body: _items.isEmpty
-          ? const Center(child: Text('No cocoa items yet. Tap + to add one.'))
+          ? const Center(
+              child: Text(
+                'No cocoa items yet.\nTap + to add one.',
+                textAlign: TextAlign.center,
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: _items.length,
               itemBuilder: (context, index) {
                 final item = _items[index];
+                final ready = !DateTime.now()
+                    .isBefore(item.harvestDate);
 
                 return Card(
                   child: ListTile(
                     title: Text(
                       item.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Text(
+                      'Farm: ${item.farmName}\n'
                       '${item.description}\n'
-                      'Quantity: ${item.quantity}\n'
-                      'Planted: ${item.plantedDate.day}/${item.plantedDate.month}/${item.plantedDate.year}\n'
-                      'Harvest: ${item.expectedHarvestDate.day}/${item.expectedHarvestDate.month}/${item.expectedHarvestDate.year}\n'
-                      '${item.isReady ? 'Ready' : 'Growing - ${_daysLeft(item)} days left'}',
+                      'Quantity: ${item.quantity} ${item.unit}\n'
+                      'Planted: ${formatDate(item.plantedDate)}\n'
+                      'Harvest: ${formatDate(item.harvestDate)}\n'
+                      '${ready ? 'Ready' : 'Growing - ${daysLeft(item)} days left'}',
                     ),
                     isThreeLine: true,
                     trailing: PopupMenuButton<String>(
@@ -222,7 +416,7 @@ class _CocoaScreenState extends State<CocoaScreen> {
                         if (value == 'edit') {
                           _showForm(item: item);
                         } else {
-                          setState(() => _items.removeAt(index));
+                          _deleteItem(index);
                         }
                       },
                       itemBuilder: (context) => const [
@@ -241,31 +435,9 @@ class _CocoaScreenState extends State<CocoaScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showForm,
+        onPressed: () => _showForm(),
         child: const Icon(Icons.add),
       ),
     );
-  }
-}
-
-DateTime calculateCocoaHarvestDate(
-  DateTime plantedDate,
-  String maturity,
-) {
-  switch (maturity) {
-    case '30 days':
-      return plantedDate.add(const Duration(days: 30));
-    case '60 days':
-      return plantedDate.add(const Duration(days: 60));
-    case '90 days':
-      return plantedDate.add(const Duration(days: 90));
-    case '6 months':
-      return DateTime(plantedDate.year, plantedDate.month + 6, plantedDate.day);
-    case '9 months':
-      return DateTime(plantedDate.year, plantedDate.month + 9, plantedDate.day);
-    case '12 months':
-      return DateTime(plantedDate.year + 1, plantedDate.month, plantedDate.day);
-    default:
-      return plantedDate;
   }
 }
