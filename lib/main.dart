@@ -16,7 +16,6 @@ class KyamusoniApp extends StatelessWidget {
     return MaterialApp(
       title: 'Kyamusoni App',
       debugShowCheckedModeBanner: false,
-
       theme: ThemeData(
         useMaterial3: false,
         primaryColor: Colors.green,
@@ -32,7 +31,6 @@ class KyamusoniApp extends StatelessWidget {
           ),
         ),
       ),
-
       home: const HomeScreen(),
     );
   }
@@ -47,7 +45,6 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Kyamusoni'),
       ),
-
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -63,15 +60,12 @@ class HomeScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
                 const Text(
                   'Explore the Kyamusoni Taste App.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 17),
                 ),
-
                 const SizedBox(height: 32),
 
                 ElevatedButton.icon(
