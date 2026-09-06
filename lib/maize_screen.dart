@@ -1,24 +1,81 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MaizeItem {
+  String farmName;
   String name;
   String description;
-  int quantity;
+  double quantity;
+  String unit;
   DateTime plantedDate;
   String maturityPeriod;
 
   MaizeItem({
+    required this.farmName,
     required this.name,
     required this.description,
     required this.quantity,
+    required this.unit,
     required this.plantedDate,
     required this.maturityPeriod,
   });
 
-  DateTime get expectedHarvestDate =>
-      calculateMaizeHarvestDate(plantedDate, maturityPeriod);
+  DateTime get harvestDate {
+    switch (maturityPeriod) {
+      case '30 days':
+        return plantedDate.add(const Duration(days: 30));
+      case '60 days':
+        return plantedDate.add(const Duration(days: 60));
+      case '90 days':
+        return plantedDate.add(const Duration(days: 90));
+      case '6 months':
+        return DateTime(
+          plantedDate.year,
+          plantedDate.month + 6,
+          plantedDate.day,
+        );
+      case '9 months':
+        return DateTime(
+          plantedDate.year,
+          plantedDate.month + 9,
+          plantedDate.day,
+        );
+      case '12 months':
+        return DateTime(
+          plantedDate.year + 1,
+          plantedDate.month,
+          plantedDate.day,
+        );
+      default:
+        return plantedDate;
+    }
+  }
 
-  bool get isReady => !DateTime.now().isBefore(expectedHarvestDate);
+  Map<String, dynamic> toJson() {
+    return {
+      'farmName': farmName,
+      'name': name,
+      'description': description,
+      'quantity': quantity,
+      'unit': unit,
+      'plantedDate': plantedDate.toIso8601String(),
+      'maturityPeriod': maturityPeriod,
+    };
+  }
+
+  factory MaizeItem.fromJson(Map<String, dynamic> json) {
+    return MaizeItem(
+      farmName: json['farmName'] ?? '',
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      quantity: (json['quantity'] as num).toDouble(),
+      unit: json['unit'] ?? 'kg',
+      plantedDate: DateTime.parse(json['plantedDate']),
+      maturityPeriod: json['maturityPeriod'] ?? '90 days',
+    );
+  }
 }
 
 class MaizeScreen extends StatefulWidget {
@@ -29,9 +86,18 @@ class MaizeScreen extends StatefulWidget {
 }
 
 class _MaizeScreenState extends State<MaizeScreen> {
+  static const String storageKey = 'kyamusoni_maize_items';
+
   final List<MaizeItem> _items = [];
 
-  static const maturityOptions = [
+  static const List<String> units = [
+    'kg',
+    'bags',
+    'acres',
+    'pieces',
+  ];
+
+  static const List<String> maturityOptions = [
     '30 days',
     '60 days',
     '90 days',
@@ -40,78 +106,174 @@ class _MaizeScreenState extends State<MaizeScreen> {
     '12 months',
   ];
 
-  int _daysLeft(MaizeItem item) {
+  @override
+  void initState() {
+    super.initState();
+    loadItems();
+  }
+
+  Future<void> loadItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(storageKey);
+
+    if (saved == null) return;
+
+    try {
+      final List<dynamic> decoded = jsonDecode(saved);
+
+      setState(() {
+        _items.clear();
+        _items.addAll(
+          decoded.map(
+            (item) => MaizeItem.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          ),
+        );
+      });
+    } catch (_) {}
+  }
+
+  Future<void> saveItems() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString(
+      storageKey,
+      jsonEncode(
+        _items.map((item) => item.toJson()).toList(),
+      ),
+    );
+  }
+
+  String formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  int daysLeft(MaizeItem item) {
     final days =
-        item.expectedHarvestDate.difference(DateTime.now()).inDays;
+        item.harvestDate.difference(DateTime.now()).inDays;
+
     return days < 0 ? 0 : days;
   }
 
   void _showForm({MaizeItem? item}) {
-    final name = TextEditingController(text: item?.name ?? '');
-    final description =
-        TextEditingController(text: item?.description ?? '');
-    final quantity =
-        TextEditingController(text: item?.quantity.toString() ?? '');
+    final farmController =
+        TextEditingController(text: item?.farmName ?? '');
 
-    DateTime planted = item?.plantedDate ?? DateTime.now();
-    String? maturity = item?.maturityPeriod;
+    final nameController =
+        TextEditingController(text: item?.name ?? '');
+
+    final descriptionController =
+        TextEditingController(text: item?.description ?? '');
+
+    final quantityController = TextEditingController(
+      text: item?.quantity.toString() ?? '',
+    );
+
+    DateTime plantedDate =
+        item?.plantedDate ?? DateTime.now();
+
+    String unit = item?.unit ?? 'kg';
+    String? maturityPeriod = item?.maturityPeriod;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            DateTime? harvest;
+            DateTime? harvestDate;
 
-            if (maturity != null) {
-              harvest = calculateMaizeHarvestDate(planted, maturity!);
+            if (maturityPeriod != null) {
+              final temp = MaizeItem(
+                farmName: '',
+                name: '',
+                description: '',
+                quantity: 0,
+                unit: unit,
+                plantedDate: plantedDate,
+                maturityPeriod: maturityPeriod!,
+              );
+
+              harvestDate = temp.harvestDate;
             }
 
             return AlertDialog(
-              title: Text(item == null ? 'Add Maize Item' : 'Edit Maize Item'),
+              title: Text(
+                item == null ? 'Add Maize' : 'Edit Maize',
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
-                      controller: name,
-                      decoration: const InputDecoration(labelText: 'Name'),
+                      controller: farmController,
+                      decoration: const InputDecoration(
+                        labelText: 'Farm Name',
+                      ),
                     ),
                     TextField(
-                      controller: description,
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                      ),
+                    ),
+                    TextField(
+                      controller: descriptionController,
                       maxLines: 2,
-                      decoration:
-                          const InputDecoration(labelText: 'Description'),
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                      ),
                     ),
                     TextField(
-                      controller: quantity,
-                      keyboardType: TextInputType.number,
-                      decoration:
-                          const InputDecoration(labelText: 'Quantity'),
+                      controller: quantityController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Quantity',
+                      ),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: unit,
+                      decoration: const InputDecoration(
+                        labelText: 'Unit',
+                      ),
+                      items: units.map((value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => unit = value);
+                        }
+                      },
                     ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Planted Date'),
                       subtitle: Text(
-                        '${planted.day}/${planted.month}/${planted.year}',
+                        formatDate(plantedDate),
                       ),
                       onTap: () async {
-                        final date = await showDatePicker(
+                        final selected = await showDatePicker(
                           context: context,
-                          initialDate: planted,
+                          initialDate: plantedDate,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                         );
 
-                        if (date != null) {
+                        if (selected != null) {
                           setDialogState(() {
-                            planted = date;
+                            plantedDate = selected;
                           });
                         }
                       },
                     ),
                     DropdownButtonFormField<String>(
-                      value: maturity,
+                      value: maturityPeriod,
                       decoration: const InputDecoration(
                         labelText: 'Maturity Period *',
                       ),
@@ -122,19 +284,21 @@ class _MaizeScreenState extends State<MaizeScreen> {
                         );
                       }).toList(),
                       onChanged: (value) {
-                        setDialogState(() {
-                          maturity = value;
-                        });
+                        setDialogState(
+                          () => maturityPeriod = value,
+                        );
                       },
                     ),
-                    if (harvest != null)
+                    if (harvestDate != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 10),
+                        padding: const EdgeInsets.only(top: 12),
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Expected Harvest: '
-                            '${harvest.day}/${harvest.month}/${harvest.year}',
+                            'Harvest Date: ${formatDate(harvestDate!)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -143,51 +307,65 @@ class _MaizeScreenState extends State<MaizeScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
+                  onPressed: () =>
+                      Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    final parsedQuantity =
-                        int.tryParse(quantity.text.trim());
+                  onPressed: () async {
+                    final quantity = double.tryParse(
+                      quantityController.text.trim(),
+                    );
 
-                    if (name.text.trim().isEmpty ||
-                        parsedQuantity == null ||
-                        parsedQuantity < 0 ||
-                        maturity == null) {
+                    if (farmController.text.trim().isEmpty ||
+                        nameController.text.trim().isEmpty ||
+                        quantity == null ||
+                        quantity < 0 ||
+                        maturityPeriod == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Name, valid Quantity and Maturity Period are required.',
+                            'Farm Name, Name, Quantity and Maturity Period are required.',
                           ),
                         ),
                       );
                       return;
                     }
 
-                    setState(() {
-                      if (item == null) {
-                        _items.add(
-                          MaizeItem(
-                            name: name.text.trim(),
-                            description: description.text.trim(),
-                            quantity: parsedQuantity,
-                            plantedDate: planted,
-                            maturityPeriod: maturity!,
-                          ),
-                        );
-                      } else {
-                        item.name = name.text.trim();
-                        item.description = description.text.trim();
-                        item.quantity = parsedQuantity;
-                        item.plantedDate = planted;
-                        item.maturityPeriod = maturity!;
-                      }
-                    });
+                    if (item == null) {
+                      _items.add(
+                        MaizeItem(
+                          farmName: farmController.text.trim(),
+                          name: nameController.text.trim(),
+                          description:
+                              descriptionController.text.trim(),
+                          quantity: quantity,
+                          unit: unit,
+                          plantedDate: plantedDate,
+                          maturityPeriod: maturityPeriod!,
+                        ),
+                      );
+                    } else {
+                      item.farmName = farmController.text.trim();
+                      item.name = nameController.text.trim();
+                      item.description =
+                          descriptionController.text.trim();
+                      item.quantity = quantity;
+                      item.unit = unit;
+                      item.plantedDate = plantedDate;
+                      item.maturityPeriod = maturityPeriod!;
+                    }
 
+                    await saveItems();
+
+                    if (!mounted) return;
+
+                    setState(() {});
                     Navigator.pop(dialogContext);
                   },
-                  child: Text(item == null ? 'Add' : 'Save'),
+                  child: Text(
+                    item == null ? 'Add' : 'Save',
+                  ),
                 ),
               ],
             );
@@ -197,30 +375,51 @@ class _MaizeScreenState extends State<MaizeScreen> {
     );
   }
 
+  Future<void> _deleteItem(int index) async {
+    setState(() {
+      _items.removeAt(index);
+    });
+
+    await saveItems();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Maize')),
+      appBar: AppBar(
+        title: const Text('Maize'),
+      ),
       body: _items.isEmpty
-          ? const Center(child: Text('No maize items yet. Tap + to add one.'))
+          ? const Center(
+              child: Text(
+                'No maize items yet.\nTap + to add one.',
+                textAlign: TextAlign.center,
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: _items.length,
               itemBuilder: (context, index) {
                 final item = _items[index];
 
+                final ready = !DateTime.now()
+                    .isBefore(item.harvestDate);
+
                 return Card(
                   child: ListTile(
                     title: Text(
                       item.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Text(
+                      'Farm: ${item.farmName}\n'
                       '${item.description}\n'
-                      'Quantity: ${item.quantity}\n'
-                      'Planted: ${item.plantedDate.day}/${item.plantedDate.month}/${item.plantedDate.year}\n'
-                      'Harvest: ${item.expectedHarvestDate.day}/${item.expectedHarvestDate.month}/${item.expectedHarvestDate.year}\n'
-                      '${item.isReady ? 'Ready' : 'Growing - ${_daysLeft(item)} days left'}',
+                      'Quantity: ${item.quantity} ${item.unit}\n'
+                      'Planted: ${formatDate(item.plantedDate)}\n'
+                      'Harvest: ${formatDate(item.harvestDate)}\n'
+                      '${ready ? 'Ready' : 'Growing - ${daysLeft(item)} days left'}',
                     ),
                     isThreeLine: true,
                     trailing: PopupMenuButton<String>(
@@ -228,7 +427,7 @@ class _MaizeScreenState extends State<MaizeScreen> {
                         if (value == 'edit') {
                           _showForm(item: item);
                         } else {
-                          setState(() => _items.removeAt(index));
+                          _deleteItem(index);
                         }
                       },
                       itemBuilder: (context) => const [
@@ -247,31 +446,9 @@ class _MaizeScreenState extends State<MaizeScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showForm,
+        onPressed: () => _showForm(),
         child: const Icon(Icons.add),
       ),
     );
-  }
-}
-
-DateTime calculateMaizeHarvestDate(
-  DateTime plantedDate,
-  String maturity,
-) {
-  switch (maturity) {
-    case '30 days':
-      return plantedDate.add(const Duration(days: 30));
-    case '60 days':
-      return plantedDate.add(const Duration(days: 60));
-    case '90 days':
-      return plantedDate.add(const Duration(days: 90));
-    case '6 months':
-      return DateTime(plantedDate.year, plantedDate.month + 6, plantedDate.day);
-    case '9 months':
-      return DateTime(plantedDate.year, plantedDate.month + 9, plantedDate.day);
-    case '12 months':
-      return DateTime(plantedDate.year + 1, plantedDate.month, plantedDate.day);
-    default:
-      return plantedDate;
   }
 }
