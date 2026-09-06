@@ -1,26 +1,68 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PoultryItem {
+  String farmName;
   String name;
-  String description;
-  int quantity;
-  DateTime plantedDate;
+  double quantity;
+  String unit;
+  String acquisitionType;
+  DateTime acquisitionDate;
   String maturityPeriod;
 
   PoultryItem({
+    required this.farmName,
     required this.name,
-    required this.description,
     required this.quantity,
-    required this.plantedDate,
+    required this.unit,
+    required this.acquisitionType,
+    required this.acquisitionDate,
     required this.maturityPeriod,
   });
 
-  DateTime get expectedHarvestDate {
-    return calculateHarvestDate(plantedDate, maturityPeriod);
+  DateTime get readyDate {
+    switch (maturityPeriod) {
+      case '21 days':
+        return acquisitionDate.add(const Duration(days: 21));
+      case '6 weeks':
+        return acquisitionDate.add(const Duration(days: 42));
+      case '18 weeks':
+        return acquisitionDate.add(const Duration(days: 126));
+      case '6 months':
+        return DateTime(
+          acquisitionDate.year,
+          acquisitionDate.month + 6,
+          acquisitionDate.day,
+        );
+      default:
+        return acquisitionDate;
+    }
   }
 
-  bool get isReady {
-    return !DateTime.now().isBefore(expectedHarvestDate);
+  Map<String, dynamic> toJson() {
+    return {
+      'farmName': farmName,
+      'name': name,
+      'quantity': quantity,
+      'unit': unit,
+      'acquisitionType': acquisitionType,
+      'acquisitionDate': acquisitionDate.toIso8601String(),
+      'maturityPeriod': maturityPeriod,
+    };
+  }
+
+  factory PoultryItem.fromJson(Map<String, dynamic> json) {
+    return PoultryItem(
+      farmName: json['farmName'] ?? '',
+      name: json['name'] ?? '',
+      quantity: (json['quantity'] as num).toDouble(),
+      unit: json['unit'] ?? 'pieces',
+      acquisitionType: json['acquisitionType'] ?? 'Bought',
+      acquisitionDate: DateTime.parse(json['acquisitionDate']),
+      maturityPeriod: json['maturityPeriod'] ?? '21 days',
+    );
   }
 }
 
@@ -32,66 +74,100 @@ class PoultryScreen extends StatefulWidget {
 }
 
 class _PoultryScreenState extends State<PoultryScreen> {
+  static const String storageKey = 'kyamusoni_poultry_items';
+
   final List<PoultryItem> _items = [];
 
-  static const List<String> maturityOptions = [
-    '30 days',
-    '60 days',
-    '90 days',
-    '6 months',
-    '9 months',
-    '12 months',
+  static const List<String> units = [
+    'pieces',
+    'trays (eggs)',
+    'kg',
   ];
 
-  DateTime calculateHarvestDate(DateTime plantedDate, String maturity) {
-    switch (maturity) {
-      case '30 days':
-        return plantedDate.add(const Duration(days: 30));
-      case '60 days':
-        return plantedDate.add(const Duration(days: 60));
-      case '90 days':
-        return plantedDate.add(const Duration(days: 90));
-      case '6 months':
-        return DateTime(
-          plantedDate.year,
-          plantedDate.month + 6,
-          plantedDate.day,
+  static const List<String> acquisitionTypes = [
+    'Bought',
+    'Hatched',
+  ];
+
+  static const List<String> maturityOptions = [
+    '21 days',
+    '6 weeks',
+    '18 weeks',
+    '6 months',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadItems();
+  }
+
+  Future<void> loadItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(storageKey);
+
+    if (saved == null) {
+      return;
+    }
+
+    try {
+      final List<dynamic> decoded = jsonDecode(saved);
+
+      setState(() {
+        _items.clear();
+        _items.addAll(
+          decoded.map(
+            (item) => PoultryItem.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          ),
         );
-      case '9 months':
-        return DateTime(
-          plantedDate.year,
-          plantedDate.month + 9,
-          plantedDate.day,
-        );
-      case '12 months':
-        return DateTime(
-          plantedDate.year + 1,
-          plantedDate.month,
-          plantedDate.day,
-        );
-      default:
-        return plantedDate;
+      });
+    } catch (_) {
+      // Ignore invalid saved data.
     }
   }
 
+  Future<void> saveItems() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final data = _items.map((item) => item.toJson()).toList();
+
+    await prefs.setString(
+      storageKey,
+      jsonEncode(data),
+    );
+  }
+
+  String formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
   int daysLeft(PoultryItem item) {
-    final difference =
-        item.expectedHarvestDate.difference(DateTime.now()).inDays;
+    final difference = item.readyDate.difference(DateTime.now()).inDays;
+
     return difference < 0 ? 0 : difference;
   }
 
-  void _showItemForm({PoultryItem? item}) {
+  void _showForm({PoultryItem? item}) {
+    final farmController = TextEditingController(
+      text: item?.farmName ?? '',
+    );
+
     final nameController = TextEditingController(
       text: item?.name ?? '',
     );
-    final descriptionController = TextEditingController(
-      text: item?.description ?? '',
-    );
+
     final quantityController = TextEditingController(
       text: item?.quantity.toString() ?? '',
     );
 
-    DateTime plantedDate = item?.plantedDate ?? DateTime.now();
+    DateTime acquisitionDate =
+        item?.acquisitionDate ?? DateTime.now();
+
+    String unit = item?.unit ?? 'pieces';
+    String acquisitionType =
+        item?.acquisitionType ?? 'Bought';
     String? maturityPeriod = item?.maturityPeriod;
 
     showDialog(
@@ -99,74 +175,127 @@ class _PoultryScreenState extends State<PoultryScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final harvestDate = maturityPeriod == null
-                ? null
-                : calculateHarvestDate(
-                    plantedDate,
-                    maturityPeriod!,
-                  );
+            DateTime? readyDate;
+
+            if (maturityPeriod != null) {
+              final temporaryItem = PoultryItem(
+                farmName: '',
+                name: '',
+                quantity: 0,
+                unit: unit,
+                acquisitionType: acquisitionType,
+                acquisitionDate: acquisitionDate,
+                maturityPeriod: maturityPeriod!,
+              );
+
+              readyDate = temporaryItem.readyDate;
+            }
 
             return AlertDialog(
-              title: Text(item == null ? 'Add Poultry Item' : 'Edit Poultry Item'),
+              title: Text(
+                item == null
+                    ? 'Add Poultry'
+                    : 'Edit Poultry',
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
+                      controller: farmController,
+                      decoration: const InputDecoration(
+                        labelText: 'Farm Name',
+                      ),
+                    ),
+                    TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
                         labelText: 'Name',
+                        hintText: 'Broilers, Layers',
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: descriptionController,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     TextField(
                       controller: quantityController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'Quantity',
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: unit,
+                      decoration: const InputDecoration(
+                        labelText: 'Unit',
+                      ),
+                      items: units.map((value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            unit = value;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: acquisitionType,
+                      decoration: const InputDecoration(
+                        labelText: 'Acquisition Type',
+                      ),
+                      items: acquisitionTypes.map((value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            acquisitionType = value;
+                          });
+                        }
+                      },
+                    ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Planted Date'),
+                      title: const Text('Acquisition Date'),
                       subtitle: Text(
-                        '${plantedDate.day}/${plantedDate.month}/${plantedDate.year}',
+                        formatDate(acquisitionDate),
                       ),
-                      trailing: const Icon(Icons.calendar_today),
+                      trailing: const Icon(
+                        Icons.calendar_today,
+                      ),
                       onTap: () async {
                         final selected = await showDatePicker(
                           context: context,
-                          initialDate: plantedDate,
+                          initialDate: acquisitionDate,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                         );
 
                         if (selected != null) {
                           setDialogState(() {
-                            plantedDate = selected;
+                            acquisitionDate = selected;
                           });
                         }
                       },
                     ),
-                    const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: maturityPeriod,
                       decoration: const InputDecoration(
                         labelText: 'Maturity Period *',
                       ),
-                      items: maturityOptions.map((option) {
+                      items: maturityOptions.map((value) {
                         return DropdownMenuItem(
-                          value: option,
-                          child: Text(option),
+                          value: value,
+                          child: Text(value),
                         );
                       }).toList(),
                       onChanged: (value) {
@@ -175,71 +304,83 @@ class _PoultryScreenState extends State<PoultryScreen> {
                         });
                       },
                     ),
-                    if (harvestDate != null) ...[
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Expected Harvest: '
-                          '${harvestDate.day}/${harvestDate.month}/${harvestDate.year}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                    if (readyDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Ready Date: ${formatDate(readyDate!)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ],
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final quantity =
-                        int.tryParse(quantityController.text.trim());
+                  onPressed: () async {
+                    final quantity = double.tryParse(
+                      quantityController.text.trim(),
+                    );
 
-                    if (name.isEmpty ||
+                    if (farmController.text.trim().isEmpty ||
+                        nameController.text.trim().isEmpty ||
                         quantity == null ||
                         quantity < 0 ||
                         maturityPeriod == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Enter Name, valid Quantity and Maturity Period.',
+                            'Farm Name, Name, Quantity and Maturity Period are required.',
                           ),
                         ),
                       );
                       return;
                     }
 
-                    setState(() {
-                      if (item == null) {
-                        _items.add(
-                          PoultryItem(
-                            name: name,
-                            description: descriptionController.text.trim(),
-                            quantity: quantity,
-                            plantedDate: plantedDate,
-                            maturityPeriod: maturityPeriod!,
-                          ),
-                        );
-                      } else {
-                        item.name = name;
-                        item.description =
-                            descriptionController.text.trim();
-                        item.quantity = quantity;
-                        item.plantedDate = plantedDate;
-                        item.maturityPeriod = maturityPeriod!;
-                      }
-                    });
+                    if (item == null) {
+                      _items.add(
+                        PoultryItem(
+                          farmName: farmController.text.trim(),
+                          name: nameController.text.trim(),
+                          quantity: quantity,
+                          unit: unit,
+                          acquisitionType: acquisitionType,
+                          acquisitionDate: acquisitionDate,
+                          maturityPeriod: maturityPeriod!,
+                        ),
+                      );
+                    } else {
+                      item.farmName = farmController.text.trim();
+                      item.name = nameController.text.trim();
+                      item.quantity = quantity;
+                      item.unit = unit;
+                      item.acquisitionType = acquisitionType;
+                      item.acquisitionDate = acquisitionDate;
+                      item.maturityPeriod = maturityPeriod!;
+                    }
+
+                    await saveItems();
+
+                    if (!mounted) return;
+
+                    setState(() {});
 
                     Navigator.pop(dialogContext);
                   },
-                  child: Text(item == null ? 'Add' : 'Save'),
+                  child: Text(
+                    item == null ? 'Add' : 'Save',
+                  ),
                 ),
               ],
             );
@@ -247,6 +388,14 @@ class _PoultryScreenState extends State<PoultryScreen> {
         );
       },
     );
+  }
+
+  Future<void> _deleteItem(int index) async {
+    setState(() {
+      _items.removeAt(index);
+    });
+
+    await saveItems();
   }
 
   @override
@@ -257,37 +406,42 @@ class _PoultryScreenState extends State<PoultryScreen> {
       ),
       body: _items.isEmpty
           ? const Center(
-              child: Text('No poultry items yet. Tap + to add one.'),
+              child: Text(
+                'No poultry items yet.\nTap + to add one.',
+                textAlign: TextAlign.center,
+              ),
             )
           : ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: _items.length,
               itemBuilder: (context, index) {
                 final item = _items[index];
-                final ready = item.isReady;
+                final ready = !DateTime.now()
+                    .isBefore(item.readyDate);
 
                 return Card(
                   child: ListTile(
                     title: Text(
                       item.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Text(
-                      '${item.description}\n'
-                      'Quantity: ${item.quantity}\n'
-                      'Planted: ${item.plantedDate.day}/${item.plantedDate.month}/${item.plantedDate.year}\n'
-                      'Harvest: ${item.expectedHarvestDate.day}/${item.expectedHarvestDate.month}/${item.expectedHarvestDate.year}\n'
+                      'Farm: ${item.farmName}\n'
+                      'Quantity: ${item.quantity} ${item.unit}\n'
+                      'Acquisition: ${item.acquisitionType}\n'
+                      'Date: ${formatDate(item.acquisitionDate)}\n'
+                      'Ready: ${formatDate(item.readyDate)}\n'
                       '${ready ? 'Ready' : 'Growing - ${daysLeft(item)} days left'}',
                     ),
                     isThreeLine: true,
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) {
                         if (value == 'edit') {
-                          _showItemForm(item: item);
+                          _showForm(item: item);
                         } else if (value == 'delete') {
-                          setState(() {
-                            _items.removeAt(index);
-                          });
+                          _deleteItem(index);
                         }
                       },
                       itemBuilder: (context) => const [
@@ -306,28 +460,9 @@ class _PoultryScreenState extends State<PoultryScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showItemForm(),
+        onPressed: () => _showForm(),
         child: const Icon(Icons.add),
       ),
     );
-  }
-}
-
-DateTime calculateHarvestDate(DateTime plantedDate, String maturity) {
-  switch (maturity) {
-    case '30 days':
-      return plantedDate.add(const Duration(days: 30));
-    case '60 days':
-      return plantedDate.add(const Duration(days: 60));
-    case '90 days':
-      return plantedDate.add(const Duration(days: 90));
-    case '6 months':
-      return DateTime(plantedDate.year, plantedDate.month + 6, plantedDate.day);
-    case '9 months':
-      return DateTime(plantedDate.year, plantedDate.month + 9, plantedDate.day);
-    case '12 months':
-      return DateTime(plantedDate.year + 1, plantedDate.month, plantedDate.day);
-    default:
-      return plantedDate;
   }
 }
