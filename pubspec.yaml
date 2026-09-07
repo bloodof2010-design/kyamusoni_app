@@ -6,7 +6,6 @@ version: 1.0.0+1
 
 environment:
 sdk: ">=3.9.0 <4.0.0"
-flutter: ">=3.22.0"
 
 dependencies:
 flutter:
@@ -28,5 +27,3 @@ flutter_launcher_icons:
 android: true
 ios: false
 image_path: "assets/icon/app_icon.png"
-adaptive_icon_background: "#FFFFFF"
-adaptive_icon_foreground: "assets/icon/app_icon.png"
