@@ -46,7 +46,7 @@ jobs:
         run: |
           keytool -genkeypair \
             -v \
-            -keystore android/kyamusoni-release.jks \
+            -keystore android/app/kyamusoni-release.jks \
             -alias kyamusoni \
             -keyalg RSA \
             -keysize 2048 \
@@ -63,6 +63,13 @@ jobs:
           keyAlias=kyamusoni
           storeFile=kyamusoni-release.jks
           EOF
+
+      - name: Verify signing files
+        run: |
+          echo "Checking keystore..."
+          ls -lh android/app/kyamusoni-release.jks
+          echo "Checking key.properties..."
+          cat android/key.properties
 
       - name: Get dependencies
         run: flutter pub get
@@ -100,7 +107,7 @@ jobs:
             | sort -V \
             | tail -n 1)
 
-          echo "Using:"
+          echo "Using apksigner:"
           echo "$APKSIGNER"
 
           "$APKSIGNER" verify --verbose "$APK"
