@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Kyamusoni Release APK
 
 on:
   push:
@@ -23,6 +23,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
       - name: Create local.properties
         run: |
@@ -38,12 +39,30 @@ jobs:
           cat > android/gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
           android.useAndroidX=true
-          android.enableRtl=true
+          android.enableR8.fullMode=false
           EOF
 
-      - name: Make Gradle wrapper executable
+      - name: Create release keystore
         run: |
-          chmod +x android/gradlew
+          keytool -genkeypair \
+            -v \
+            -keystore android/kyamusoni-release.jks \
+            -alias kyamusoni \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass kyamusoni123 \
+            -keypass kyamusoni123 \
+            -dname "CN=Kyamusoni, OU=Kyamusoni, O=Kyamusoni, L=Kampala, ST=Central, C=UG"
+
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=kyamusoni123
+          keyPassword=kyamusoni123
+          keyAlias=kyamusoni
+          storeFile=kyamusoni-release.jks
+          EOF
 
       - name: Get dependencies
         run: flutter pub get
@@ -54,25 +73,52 @@ jobs:
       - name: Get dependencies again
         run: flutter pub get
 
-      - name: Build release APK
-        run: |
-          cd android
-          ./gradlew app:assembleRelease --stacktrace --no-daemon
+      - name: Build signed release APK
+        run: flutter build apk --release
 
-      - name: Prepare APK
+      - name: Verify APK exists
+        run: |
+          set -e
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: Release APK was not created."
+            exit 1
+          fi
+
+          ls -lh "$APK"
+
+      - name: Verify APK signature
+        run: |
+          set -e
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" \
+            -name apksigner \
+            | sort -V \
+            | tail -n 1)
+
+          echo "Using:"
+          echo "$APKSIGNER"
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+      - name: Prepare final APK
         run: |
           set -e
 
           mkdir -p final-apk
 
-          cp android/app/build/outputs/apk/release/app-release.apk \
-            final-apk/kyamusoni-release.apk
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            final-apk/kyamusoni-release-signed.apk
 
-          ls -lh final-apk/kyamusoni-release.apk
+          ls -lh final-apk/kyamusoni-release-signed.apk
 
-      - name: Upload APK
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: kyamusoni-release-apk
-          path: final-apk/kyamusoni-release.apk
+          name: kyamusoni-release-signed
+          path: final-apk/kyamusoni-release-signed.apk
           if-no-files-found: error
