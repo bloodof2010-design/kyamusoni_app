@@ -23,8 +23,6 @@ if (flutterVersionName == null) {
 
 /*
  * Load release signing information.
- * The GitHub Actions workflow creates android/key.properties
- * and android/kyamusoni-release.jks.
  */
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
@@ -79,15 +77,3 @@ android {
 flutter {
     source '../..'
 }
-
-Only this setting was changed:
-
-compileSdk 35
-
-
-
-compileSdk 36
-
-Do not change your "minSdk 24" or "targetSdk 33" just because of this error.
-
-After saving, commit and push, then run the GitHub Actions release build again.
