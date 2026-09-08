@@ -68,31 +68,57 @@ jobs:
         run: |
           echo "Checking keystore..."
           ls -lh android/app/kyamusoni-release.jks
+
           echo "Checking key.properties..."
           cat android/key.properties
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Clean
+      - name: Clean Flutter
         run: flutter clean
 
       - name: Get dependencies again
         run: flutter pub get
 
-      - name: Build signed release APK
-        run: flutter build apk --release
+      - name: Build release APK
+        run: flutter build apk --release --verbose
 
-      - name: Verify APK exists
+      - name: Locate generated APK
+        if: always()
+        run: |
+          echo "===== Searching for APK files ====="
+
+          find . -type f -name "*.apk" -print
+
+          echo "===== Flutter APK directory ====="
+
+          if [ -d "build/app/outputs/flutter-apk" ]; then
+            ls -lah build/app/outputs/flutter-apk/
+          fi
+
+          echo "===== Android outputs ====="
+
+          if [ -d "android/app/build/outputs" ]; then
+            find android/app/build/outputs -type f -print
+          fi
+
+      - name: Find release APK
+        id: find_apk
         run: |
           set -e
 
-          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK=$(find . -type f -name "app-release.apk" | head -n 1)
 
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: Release APK was not created."
+          if [ -z "$APK" ]; then
+            echo "ERROR: No app-release.apk was found."
             exit 1
           fi
+
+          echo "Found APK:"
+          echo "$APK"
+
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
 
           ls -lh "$APK"
 
@@ -100,7 +126,7 @@ jobs:
         run: |
           set -e
 
-          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK="${{ steps.find_apk.outputs.apk_path }}"
 
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" \
             -name apksigner \
@@ -118,7 +144,7 @@ jobs:
 
           mkdir -p final-apk
 
-          cp build/app/outputs/flutter-apk/app-release.apk \
+          cp "${{ steps.find_apk.outputs.apk_path }}" \
             final-apk/kyamusoni-release-signed.apk
 
           ls -lh final-apk/kyamusoni-release-signed.apk
